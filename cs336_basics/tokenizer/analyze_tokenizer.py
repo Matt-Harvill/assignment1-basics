@@ -1,7 +1,7 @@
-import json
 from dataclasses import dataclass
 
 from ..utils.paths import get_artifacts_path
+from .utils import load_vocab_and_merges
 
 
 @dataclass
@@ -39,20 +39,7 @@ def load_tokenizer_files(tokenizer_name: str) -> tuple[dict[int, str], list | No
     vocab_path = tokenizer_path / "vocab.json"
     merges_path = tokenizer_path / "merges.txt"
 
-    if not vocab_path.exists():
-        raise FileNotFoundError(f"Vocab file not found: {vocab_path}")
-
-    # Load vocab
-    with open(vocab_path) as f:
-        vocab = json.load(f)
-
-    # Load merges if it exists
-    merges = None
-    if merges_path.exists():
-        with open(merges_path) as f:
-            merges = [line.strip() for line in f if line.strip()]
-
-    return vocab, merges
+    return load_vocab_and_merges(vocab_path, merges_path)
 
 
 def get_tokenizer_statistics(tokenizer_name: str) -> TokenizerStats:
