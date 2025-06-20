@@ -1,4 +1,4 @@
-from .pretokenize import pre_train_tokenizer
+from .pretokenizer import pretokenize
 from ..utils.paths import get_artifacts_path
 import logging
 import os
@@ -11,8 +11,52 @@ import json
 from pathlib import Path
 
 
+def count_bytes_pairs(bytes_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
+    """
+    Count byte pairs from bytes tuples.
+
+    Args:
+        bytes_counts: Dictionary mapping bytes tuples to their counts
+
+    Returns:
+        Dictionary mapping byte pairs to their counts
+    """
+    bytes_pair_counts: dict[tuple[bytes, bytes], int] = {}
+
+    for bytes_tuple, count in bytes_counts.items():
+        for i in range(len(bytes_tuple) - 1):
+            pair = (bytes_tuple[i], bytes_tuple[i + 1])
+            bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + count
+
+    return bytes_pair_counts
+
+
+def count_bytes_pairs_with_tuples_present(
+    bytes_counts: dict[tuple[bytes, ...], int]
+) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]]:
+    """
+    Count byte pairs from bytes tuples and track which tuples contain each pair.
+
+    Args:
+        bytes_counts: Dictionary mapping bytes tuples to their counts
+
+    Returns:
+        Tuple of (pair_counts, pair_to_tuples_mapping)
+    """
+    bytes_pair_counts: dict[tuple[bytes, bytes], int] = {}
+    bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]] = defaultdict(set)
+
+    for bytes_tuple, count in bytes_counts.items():
+        for i in range(len(bytes_tuple) - 1):
+            pair = (bytes_tuple[i], bytes_tuple[i + 1])
+            bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + count
+            bytes_pair_tuples_present[pair].add(bytes_tuple)
+
+    return bytes_pair_counts, bytes_pair_tuples_present
+
+
 def train_tokenizer(
-    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str], num_processes: int = mp.cpu_count()
+    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str], num_processes: int | None = None
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
     Tokenizes the dataset using Byte-Pair Encoding (BPE)
@@ -21,7 +65,7 @@ def train_tokenizer(
         input_path (str | os.PathLike): Path to the input text file
         vocab_size (int): The maximum final vocabulary size (including the initial byte vocabulary, vocabulary items produced from merging, and any special tokens)
         special_tokens (list[str]): A list of strings to add to the vocabulary. These special tokens do not otherwise affect BPE training.
-        num_processes (int): Number of processes to use for pretokenization. Defaults to the number of CPU cores.
+        num_processes (int | None): Number of processes to use for pretokenization.
 
     Returns:
         tuple[dict[int, bytes], list[tuple[bytes, bytes]]]: The tokenizer vocabulary and merges
@@ -31,32 +75,12 @@ def train_tokenizer(
     merges: list[tuple[bytes, bytes]] = []
 
     # Pretokenization
-    bytes_counts: dict[tuple[bytes, ...], int] = pre_train_tokenizer(
+    bytes_counts: dict[tuple[bytes, ...], int] = pretokenize(
         input_path=input_path, special_tokens=special_tokens, num_desired_processes=num_processes
     )
 
-    def count_bytes_pairs(bytes_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
-        bytes_pair_counts: dict[tuple[bytes, bytes], int] = {}
-        for bytes_tuple, count in bytes_counts.items():
-            for i in range(len(bytes_tuple) - 1):
-                pair = (bytes_tuple[i], bytes_tuple[i + 1])
-                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + count
-        return bytes_pair_counts
-
-    def count_bytes_pairs_and_tuples_present(
-        bytes_counts: dict[tuple[bytes, ...], int]
-    ) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]]:
-        bytes_pair_counts: dict[tuple[bytes, bytes], int] = {}
-        bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]] = defaultdict(set)
-        for bytes_tuple, count in bytes_counts.items():
-            for i in range(len(bytes_tuple) - 1):
-                pair = (bytes_tuple[i], bytes_tuple[i + 1])
-                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + count
-                bytes_pair_tuples_present[pair].add(bytes_tuple)
-        return bytes_pair_counts, bytes_pair_tuples_present
-
-    # Count all byte pairs
-    bytes_pair_counts, bytes_pair_tuples_present = count_bytes_pairs_and_tuples_present(bytes_counts=bytes_counts)
+    # Count all byte pairs and track which tuples contain each pair
+    bytes_pair_counts, bytes_pair_tuples_present = count_bytes_pairs_with_tuples_present(bytes_counts=bytes_counts)
 
     # Now finally start adding bytes to the vocab
     # Add special tokens first

@@ -67,15 +67,15 @@ def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[b
     return byte_counts
 
 
-def pre_train_tokenizer(
-    input_path: str | os.PathLike, special_tokens: list[str], num_desired_processes: int = mp.cpu_count()
+def pretokenize(
+    input_path: str | os.PathLike, special_tokens: list[str], num_desired_processes: int | None = None
 ) -> Counter[tuple[bytes, ...]]:
     """
     Parallel implementation of pre-tokenization for Byte-Pair Encoding (BPE) tokenizer
     - Uses up to all processes if desired
     """
 
-    num_processes = min(mp.cpu_count(), num_desired_processes)
+    num_processes = min(mp.cpu_count(), num_desired_processes) if num_desired_processes is not None else mp.cpu_count()
 
     # Read the input file in binary mode
     with open(input_path, "rb") as f:
