@@ -1,5 +1,4 @@
 from cs336_basics.pretokenization_example import pre_tokenize_dataset_bpe
-from collections import Counter
 import logging
 import os
 
@@ -27,19 +26,20 @@ def tokenize_dataset_bpe(
     merges: list[tuple[bytes, bytes]] = []
 
     # Pretokenization
-    bytes_counts: Counter[tuple[bytes, ...]] = pre_tokenize_dataset_bpe(
+    bytes_counts: dict[tuple[bytes, ...], int] = pre_tokenize_dataset_bpe(
         input_path=input_path, special_tokens=special_tokens, num_desired_processes=24
     )
 
-    def count_bytes_pairs(bytes_counts: Counter[tuple[bytes, ...]]) -> Counter[tuple[bytes, bytes]]:
-        byte_pair_counts: Counter[tuple[bytes, bytes]] = Counter()
+    def count_bytes_pairs(bytes_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
+        byte_pair_counts: dict[tuple[bytes, bytes], int] = {}
         for bytes_tuple, count in bytes_counts.items():
             for i in range(len(bytes_tuple) - 1):
-                byte_pair_counts[(bytes_tuple[i], bytes_tuple[i + 1])] += count
+                pair = (bytes_tuple[i], bytes_tuple[i + 1])
+                byte_pair_counts[pair] = byte_pair_counts.get(pair, 0) + count
         return byte_pair_counts
 
     # Count all byte pairs
-    bytes_pair_counts: Counter[tuple[bytes, bytes]] = count_bytes_pairs(bytes_counts=bytes_counts)
+    bytes_pair_counts: dict[tuple[bytes, bytes], int] = count_bytes_pairs(bytes_counts=bytes_counts)
 
     # Now finally start adding bytes to the vocab
     # Add special tokens first
@@ -142,11 +142,20 @@ def tokenize_dataset_bpe(
                 new_bytes_list.append(bytes_tuple[i])
             new_bytes_tuple: tuple[bytes, ...] = tuple(new_bytes_list)
 
-            # Recount
-            before_merge_bytes_pair_counts = count_bytes_pairs(Counter({bytes_tuple: count}))
-            after_merge_bytes_pair_counts = count_bytes_pairs(Counter({new_bytes_tuple: count}))
-            bytes_pair_counts -= before_merge_bytes_pair_counts
-            bytes_pair_counts += after_merge_bytes_pair_counts
+            # Recount - manually handle dict arithmetic
+            before_merge_bytes_pair_counts = count_bytes_pairs({bytes_tuple: count})
+            after_merge_bytes_pair_counts = count_bytes_pairs({new_bytes_tuple: count})
+
+            # Subtract before_merge counts
+            for pair, pair_count in before_merge_bytes_pair_counts.items():
+                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) - pair_count
+                # Remove zero or negative counts
+                if bytes_pair_counts[pair] <= 0:
+                    del bytes_pair_counts[pair]
+
+            # Add after_merge counts
+            for pair, pair_count in after_merge_bytes_pair_counts.items():
+                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + pair_count
 
             # Store for later processing
             bytes_tuples_to_delete.append(bytes_tuple)

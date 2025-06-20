@@ -38,7 +38,8 @@ def test_train_bpe_speed():
     print("\n=== cProfile Results (Top 20 Functions) ===")
     print(s.getvalue())
 
-    assert end_time - start_time < 1.5
+    total_time = end_time - start_time
+    assert total_time < 1.5
 
 
 def test_train_bpe():
