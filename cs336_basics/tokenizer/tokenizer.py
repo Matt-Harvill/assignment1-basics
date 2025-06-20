@@ -101,13 +101,18 @@ class Tokenizer:
         required for memory-efficient tokenization of large files that we cannot directly load into
         memory.
         """
-        raise NotImplementedError("encode_iterable method not yet implemented")
+        for text in iterable:
+            token_ids = self.encode(text)
+            yield from token_ids
 
     def decode(self, ids: list[int]) -> str:
         """
         Decode a sequence of token IDs into text
         """
-        raise NotImplementedError("decode method not yet implemented")
+
+        ids_to_bytes = [self.vocab[id] for id in ids]
+        bytes_to_text = b"".join(ids_to_bytes).decode("utf-8")
+        return bytes_to_text
 
 
 # Test the tokenizer on a few edge cases (small examples)
@@ -124,23 +129,22 @@ if __name__ == "__main__":
     tokenizer = Tokenizer.from_files(vocab_filepath, merges_filepath, special_tokens=["<|endoftext|>"])
 
     # Test the tokenizer on a few small examples
-    print(tokenizer.encode("Hello, world!"))
-    print(tokenizer.encode("Hello, world! This is a test."))
-    print(tokenizer.encode("Hello, world! This is a test. This is a test. This is a test. This is a test."))
 
-    # Test the tokenizer on a few edge cases (special tokens)
-    print(
-        tokenizer.encode(
-            "Hello, world! <|endoftext|><|endoftext|> this is a simple example<|endoftext|> <|endoftext|> of a sentence"
-        )
-    )
-    print(
-        tokenizer.encode(
-            "<|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|>"
-        )
-    )
-    print(
-        tokenizer.encode(
-            " <|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|><|endoftext|><|endoftext|>"
-        )
-    )
+    test_strings = [
+        "Hello, world!",
+        "   Hello, world! This is a test.",
+        "Hello, world! This is a test. This is a test. This is a test. This is a test.",
+        "Hello, world! <|endoftext|><|endoftext|> this is a simple example<|endoftext|> <|endoftext|> of a sentence",
+        "<|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|>",
+        " <|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|><|endoftext|><|endoftext|>",
+    ]
+
+    for test_string in test_strings:
+        print(f"Token IDs: {tokenizer.encode(test_string)}")
+        print(f"Token IDs Iterable: {list(tokenizer.encode_iterable([test_string]))}")
+        assert tuple(tokenizer.encode(test_string)) == tuple(
+            tokenizer.encode_iterable([test_string])
+        ), "Token IDs != Token IDs Iterable"
+
+        print(f"Decoded(Encoded): {tokenizer.decode(tokenizer.encode(test_string))}")
+        assert tokenizer.decode(tokenizer.encode(test_string)) == test_string, "Decoded(Encoded) != Test String"
