@@ -1,15 +1,18 @@
-from cs336_basics.pretokenization_example import pre_tokenize_dataset_bpe
+from .pretokenize import pre_train_tokenizer
+from ..utils.paths import get_artifacts_path
 import logging
 import os
+import argparse
 from collections import defaultdict
+import multiprocessing as mp
+import cProfile
+import pstats
+import json
+from pathlib import Path
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
-
-def tokenize_dataset_bpe(
-    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str]
+def train_tokenizer(
+    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str], num_processes: int = mp.cpu_count()
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
     Tokenizes the dataset using Byte-Pair Encoding (BPE)
@@ -18,6 +21,7 @@ def tokenize_dataset_bpe(
         input_path (str | os.PathLike): Path to the input text file
         vocab_size (int): The maximum final vocabulary size (including the initial byte vocabulary, vocabulary items produced from merging, and any special tokens)
         special_tokens (list[str]): A list of strings to add to the vocabulary. These special tokens do not otherwise affect BPE training.
+        num_processes (int): Number of processes to use for pretokenization. Defaults to the number of CPU cores.
 
     Returns:
         tuple[dict[int, bytes], list[tuple[bytes, bytes]]]: The tokenizer vocabulary and merges
@@ -27,8 +31,8 @@ def tokenize_dataset_bpe(
     merges: list[tuple[bytes, bytes]] = []
 
     # Pretokenization
-    bytes_counts: dict[tuple[bytes, ...], int] = pre_tokenize_dataset_bpe(
-        input_path=input_path, special_tokens=special_tokens, num_desired_processes=2
+    bytes_counts: dict[tuple[bytes, ...], int] = pre_train_tokenizer(
+        input_path=input_path, special_tokens=special_tokens, num_desired_processes=num_processes
     )
 
     def count_bytes_pairs(bytes_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
@@ -166,14 +170,77 @@ def tokenize_dataset_bpe(
 
 
 if __name__ == "__main__":
-    vocab, merges = tokenize_dataset_bpe(
-        input_path="/home/matthew/Code/assignment1-basics/data/test.txt",
-        vocab_size=270,
-        special_tokens=["<|endoftext|>"],
+    parser = argparse.ArgumentParser(description="Train a BPE tokenizer on a text file")
+    parser.add_argument("-i", "--input_path", help="Path to the input text file", required=True)
+    parser.add_argument(
+        "-v",
+        "--vocab_size",
+        type=int,
+        help="Maximum vocabulary size (including initial bytes and special tokens)",
+        required=True,
+    )
+    parser.add_argument(
+        "-s",
+        "--special-tokens",
+        nargs="*",
+        default=["<|endoftext|>"],
+        help="Special tokens to add to vocabulary (default: <|endoftext|>)",
+    )
+    parser.add_argument(
+        "-p",
+        "--num-processes",
+        type=int,
+        default=None,
+        required=False,
+        help=f"Number of processes to use for pretokenization (default: {mp.cpu_count()})",
     )
 
+    args = parser.parse_args()
+
+    # Profile the tokenization
+    profiler = cProfile.Profile()
+    profiler.enable()
+
+    vocab, merges = train_tokenizer(
+        input_path=args.input_path,
+        vocab_size=args.vocab_size,
+        special_tokens=args.special_tokens,
+        num_processes=args.num_processes,
+    )
+
+    profiler.disable()
+    stats = pstats.Stats(profiler)
+    stats.sort_stats("time")
+    stats.print_stats(10)
+
+    # Configure logging
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    logger = logging.getLogger(__name__)
+
     # Print the vocab and merges
-    logger.info(f"vocab: {vocab}")
-    logger.info(f"merges: {merges}")
+    logger.debug(f"vocab: {vocab}")
+    logger.debug(f"merges: {merges}")
     logger.info(f"Vocabulary size: {len(vocab)}")
     logger.info(f"Number of merges: {len(merges)}")
+
+    # Save vocab and merges to the artifacts/tokenizers/{dataset_name}/merges.txt and vocab.json
+    dataset_name = Path(args.input_path).stem  # Get filename without extension
+
+    # Create the output directory if it doesn't exist
+    output_dir = get_artifacts_path() / "tokenizers" / dataset_name
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Save vocab
+    with open(output_dir / "vocab.json", "w") as f:
+        json.dump({str(k): v.decode("utf-8", errors="replace") for k, v in vocab.items()}, f, indent=2)
+    logger.info(f"Saved vocab to {output_dir / 'vocab.json'}")
+
+    # Save merges
+    with open(output_dir / "merges.txt", "w") as f:
+        for merge in merges:
+            f.write(
+                f"\"{merge[0].decode('utf-8', errors='replace')}\" \"{merge[1].decode('utf-8', errors='replace')}\"\n"
+            )
+    logger.info(f"Saved merges to {output_dir / 'merges.txt'}")
+
+    logger.info(f"Saved tokenizer to {output_dir}")
