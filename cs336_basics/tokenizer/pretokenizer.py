@@ -4,6 +4,7 @@ from typing import BinaryIO
 import multiprocessing as mp
 import regex as re
 from functools import partial
+from .utils import split_text_on_special_tokens
 
 
 def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
@@ -52,8 +53,8 @@ def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special
 def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[bytes, ...]]:
     # Pre-tokenization pattern
     regex_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
-    # Cut out the special tokens first
-    subchunks = re.split(r"|".join(special_tokens), chunk)
+    # Cut out the special tokens first - escape regex metacharacters for safety
+    subchunks, _, _ = split_text_on_special_tokens(chunk, special_tokens)
 
     # Run pre-tokenization on each subchunk and store counts for each pre-token across subchunks
     byte_counts: Counter[tuple[bytes, ...]] = Counter()

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import re
 
 
 def load_vocab_and_merges(vocab_filepath: str | Path, merges_filepath: str | Path) -> tuple[dict[int, str], list[str]]:
@@ -75,3 +76,31 @@ def convert_merges_to_bytes(merges: list[str] | None) -> list[tuple[bytes, bytes
             merges_bytes.append((parts[0].encode("utf-8"), parts[1].encode("utf-8")))
 
     return merges_bytes
+
+
+def split_text_on_special_tokens(text: str, special_tokens: list[str]) -> tuple[list[str], list[str], bool]:
+    """
+    Split text on special tokens and return text segments, special tokens, and whether text starts with a special token for reconstruction later
+
+    Returns:
+        tuple: (text_segments, special_tokens_found, starts_with_special_token) where:
+            - text_segments: List of text segments (may include empty strings)
+            - special_tokens_found: List of special tokens found in order of appearance
+            - starts_with_special_token: Boolean indicating if text starts with a special token
+    """
+    if not special_tokens:
+        return [text], [], False
+
+    # Escape special regex characters in special tokens
+    pattern = r"|".join(map(re.escape, special_tokens))
+
+    # Get text segments by splitting on special tokens
+    text_segments = re.split(pattern, text)
+
+    # Get special tokens in order of appearance
+    special_tokens_found = re.findall(pattern, text)
+
+    # Check if text starts with a special token
+    starts_with_special_token = any(text.startswith(token) for token in special_tokens)
+
+    return text_segments, special_tokens_found, starts_with_special_token
