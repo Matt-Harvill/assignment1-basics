@@ -67,7 +67,7 @@ def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[b
     return byte_counts
 
 
-def pre_tokenize_dataset_bpe(
+def pre_train_tokenizer(
     input_path: str | os.PathLike, special_tokens: list[str], num_desired_processes: int = mp.cpu_count()
 ) -> Counter[tuple[bytes, ...]]:
     """
