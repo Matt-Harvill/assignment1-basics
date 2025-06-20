@@ -35,7 +35,9 @@ def count_bytes_pairs_with_tuples_present(
     bytes_counts: dict[tuple[bytes, ...], int]
 ) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]]:
     """
-    Count byte pairs from bytes tuples and track which tuples contain each pair.
+    Since we have a bunch of strings broken into bytes tuples and we want to merge bytes pairs,
+    We need to count the number of times each byte pair appears in the bytes tuples.
+    For efficiency, we also track which tuples contain each byte pair so we don't need to iterate over all tuples later when merging.
 
     Args:
         bytes_counts: Dictionary mapping bytes tuples to their counts
@@ -55,11 +57,164 @@ def count_bytes_pairs_with_tuples_present(
     return bytes_pair_counts, bytes_pair_tuples_present
 
 
+def add_special_tokens_to_vocab(vocab: dict[int, bytes], special_tokens: list[str], vocab_index: int) -> int:
+    for special_token in special_tokens:
+        vocab[vocab_index] = special_token.encode("utf-8")
+        vocab_index += 1
+
+    return vocab_index
+
+
+def add_bytes_to_vocab(vocab: dict[int, bytes], vocab_index: int) -> int:
+    for i in range(256):
+        vocab[vocab_index] = bytes([i])
+        vocab_index += 1
+
+    return vocab_index
+
+
+def add_merge_to_vocab(vocab: dict[int, bytes], merge: tuple[bytes, bytes], vocab_index: int) -> int:
+    vocab[vocab_index] = merge[0] + merge[1]
+    vocab_index += 1
+    return vocab_index
+
+
+def get_most_freq_pair(bytes_pair_counts: dict[tuple[bytes, bytes], int]) -> tuple[bytes, bytes]:
+    """
+    Find the most frequent pair in the bytes pair counts. If there are multiple pairs with the same highest count,
+    return the lexographically highest pair.
+    """
+    most_freq: int = 0
+    most_freq_byte_pairs: list[tuple[bytes, bytes]] = []
+
+    # Get the highest count in the list
+    for byte_pair, count in bytes_pair_counts.items():
+        if count > most_freq:
+            most_freq_byte_pairs = [byte_pair]
+            most_freq = count
+        elif count == most_freq:
+            most_freq_byte_pairs.append(byte_pair)
+
+    # Find the lexographically highest value from the most_freq_byte_pairs
+    # Sort based on the raw byte values
+    highest_lexographic_pair = max(most_freq_byte_pairs, key=lambda x: (x[0], x[1]))
+
+    return highest_lexographic_pair
+
+
+def create_new_merged_tuple(bytes_tuple: tuple[bytes, ...], most_freq_pair: tuple[bytes, bytes]) -> tuple[bytes, ...]:
+    """Create a new bytes tuple by merging the most frequent pair."""
+    result = []
+    i = 0
+    while i < len(bytes_tuple) - 1:
+        if (bytes_tuple[i], bytes_tuple[i + 1]) == most_freq_pair:
+            result.append(bytes_tuple[i] + bytes_tuple[i + 1])
+            i += 2
+        else:
+            result.append(bytes_tuple[i])
+            i += 1
+    if i < len(bytes_tuple):
+        result.append(bytes_tuple[i])
+    return tuple(result)
+
+
+def update_pair_counts_for_tuple(
+    bytes_tuple: tuple[bytes, ...],
+    new_bytes_tuple: tuple[bytes, ...],
+    count: int,
+    bytes_pair_counts: dict[tuple[bytes, bytes], int],
+    bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+) -> None:
+    """Update pair counts when replacing a tuple with its merged version."""
+    # Remove old pair counts
+    before_merge_counts = count_bytes_pairs({bytes_tuple: count})
+    for pair, pair_count in before_merge_counts.items():
+        bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) - pair_count
+        if bytes_pair_counts[pair] <= 0:
+            del bytes_pair_counts[pair]
+        bytes_pair_tuples_present[pair].remove(bytes_tuple)
+        if len(bytes_pair_tuples_present[pair]) == 0:
+            del bytes_pair_tuples_present[pair]
+
+    # Add new pair counts
+    after_merge_counts = count_bytes_pairs({new_bytes_tuple: count})
+    for pair, pair_count in after_merge_counts.items():
+        bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + pair_count
+        bytes_pair_tuples_present[pair].add(new_bytes_tuple)
+
+
+def process_tuple_merge(
+    bytes_tuple: tuple[bytes, ...],
+    most_freq_pair: tuple[bytes, bytes],
+    bytes_pair_counts: dict[tuple[bytes, bytes], int],
+    bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+    bytes_counts: dict[tuple[bytes, ...], int],
+) -> tuple[tuple[bytes, ...], tuple[bytes, ...]]:
+    """Process merging of a single tuple and return old and new tuples."""
+    count = bytes_counts[bytes_tuple]
+    new_bytes_tuple = create_new_merged_tuple(bytes_tuple, most_freq_pair)
+
+    update_pair_counts_for_tuple(bytes_tuple, new_bytes_tuple, count, bytes_pair_counts, bytes_pair_tuples_present)
+
+    return bytes_tuple, new_bytes_tuple
+
+
+def merge_pair(
+    most_freq_pair: tuple[bytes, bytes],
+    bytes_pair_counts: dict[tuple[bytes, bytes], int],
+    bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+    bytes_counts: dict[tuple[bytes, ...], int],
+) -> None:
+    """Merge the most frequent pair of bytes this iteration."""
+    tuples_to_process = list(bytes_pair_tuples_present[most_freq_pair])
+    old_tuples, new_tuples = [], []
+
+    # Process each tuple containing the most frequent pair
+    for bytes_tuple in tuples_to_process:
+        old_tuple, new_tuple = process_tuple_merge(
+            bytes_tuple, most_freq_pair, bytes_pair_counts, bytes_pair_tuples_present, bytes_counts
+        )
+        old_tuples.append(old_tuple)
+        new_tuples.append(new_tuple)
+
+    # Update the main bytes_counts dictionary
+    for old_tuple, new_tuple in zip(old_tuples, new_tuples):
+        count = bytes_counts[old_tuple]
+        del bytes_counts[old_tuple]
+        bytes_counts[new_tuple] = bytes_counts.get(new_tuple, 0) + count
+
+
+def fill_vocab(
+    vocab: dict[int, bytes],
+    vocab_size: int,
+    special_tokens: list[str],
+    bytes_pair_counts: dict[tuple[bytes, bytes], int],
+    bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]],
+    bytes_counts: dict[tuple[bytes, ...], int],
+) -> tuple[int, list[tuple[bytes, bytes]]]:
+    """Fill vocabulary by adding special tokens, bytes, and iteratively merging the most frequent pairs."""
+    vocab_index: int = 0
+    merges: list[tuple[bytes, bytes]] = []
+
+    # Add special tokens and bytes to the vocab
+    vocab_index = add_special_tokens_to_vocab(vocab=vocab, special_tokens=special_tokens, vocab_index=vocab_index)
+    vocab_index = add_bytes_to_vocab(vocab=vocab, vocab_index=vocab_index)
+
+    while vocab_index < vocab_size and len(bytes_pair_counts) > 0:
+        most_freq_pair = get_most_freq_pair(bytes_pair_counts=bytes_pair_counts)
+        merge_pair(most_freq_pair, bytes_pair_counts, bytes_pair_tuples_present, bytes_counts)
+
+        vocab_index = add_merge_to_vocab(vocab=vocab, merge=most_freq_pair, vocab_index=vocab_index)
+        merges.append(most_freq_pair)
+
+    return vocab_index, merges
+
+
 def train_tokenizer(
     input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str], num_processes: int | None = None
 ) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
-    Tokenizes the dataset using Byte-Pair Encoding (BPE)
+    Train a Byte-Pair Encoding (BPE) tokenizer on a text file.
 
     Args:
         input_path (str | os.PathLike): Path to the input text file
@@ -72,123 +227,19 @@ def train_tokenizer(
     """
 
     vocab: dict[int, bytes] = {}
-    merges: list[tuple[bytes, bytes]] = []
 
-    # Pretokenization
+    # Pretokenize the input text into subchunks (tuples of bytes)
     bytes_counts: dict[tuple[bytes, ...], int] = pretokenize(
         input_path=input_path, special_tokens=special_tokens, num_desired_processes=num_processes
     )
 
-    # Count all byte pairs and track which tuples contain each pair
+    # Count bytes pairs and track which tuples contain each pair
     bytes_pair_counts, bytes_pair_tuples_present = count_bytes_pairs_with_tuples_present(bytes_counts=bytes_counts)
 
-    # Now finally start adding bytes to the vocab
-    # Add special tokens first
-    vocab_index = 0
-    for special_token in special_tokens:
-        vocab[vocab_index] = special_token.encode("utf-8")
-        vocab_index += 1
-
-    # Add the individual bytes to the vocab
-    for i in range(256):
-        vocab[vocab_index] = bytes([i])
-        vocab_index += 1
-
-    # Helper function for merging to find the most frequent pair this iteration
-    def get_most_freq_pair() -> tuple[bytes, bytes]:
-        most_freq: int = 0
-        most_freq_byte_pairs: list[tuple[bytes, bytes]] = []
-
-        # Get the highest count in the list
-        for byte_pair, count in bytes_pair_counts.items():
-            if count > most_freq:
-                most_freq_byte_pairs = [byte_pair]
-                most_freq = count
-            elif count == most_freq:
-                most_freq_byte_pairs.append(byte_pair)
-
-        # Find the lexographically highest value from the most_freq_byte_pairs
-        # Sort based on the raw byte values
-        highest_lexographic_pair = max(most_freq_byte_pairs, key=lambda x: (x[0], x[1]))
-
-        return highest_lexographic_pair
-
-    # Merge a pair of bytes (handling the bytes_counts and bytes_pair_counts updates)
-    def merge_pair(most_freq_pair: tuple[bytes, bytes]):
-        nonlocal bytes_pair_counts, bytes_counts, merges, bytes_pair_tuples_present
-
-        bytes_tuples_to_delete: list[tuple[bytes, ...]] = []
-        bytes_tuples_to_add: list[tuple[bytes, ...]] = []
-        counts_to_add: list[int] = []
-
-        # Create a copy of the set to iterate over safely
-        bytes_tuples_to_process = list(bytes_pair_tuples_present[most_freq_pair])
-
-        for bytes_tuple in bytes_tuples_to_process:
-            count = bytes_counts[bytes_tuple]
-
-            # Create the new tuple with merge(s)
-            new_bytes_list: list[bytes] = []
-            i = 0
-            while i < len(bytes_tuple) - 1:
-                current_pair = (bytes_tuple[i], bytes_tuple[i + 1])
-                if current_pair == most_freq_pair:
-                    new_bytes_list.append(
-                        bytes_tuple[i] + bytes_tuple[i + 1]
-                    )  # Join the bytes together into single bytes object
-                    i += 2  # Skip the next byte since we merged it
-                else:
-                    new_bytes_list.append(bytes_tuple[i])
-                    i += 1
-            # Add the last byte if we haven't processed it
-            if i < len(bytes_tuple):
-                new_bytes_list.append(bytes_tuple[i])
-            new_bytes_tuple: tuple[bytes, ...] = tuple(new_bytes_list)
-
-            # Recount - manually handle dict arithmetic
-            before_merge_bytes_pair_counts = count_bytes_pairs({bytes_tuple: count})
-            after_merge_bytes_pair_counts = count_bytes_pairs({new_bytes_tuple: count})
-
-            # Clear the old bytes pair counts and tuples present
-            for pair, pair_count in before_merge_bytes_pair_counts.items():
-                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) - pair_count
-                if bytes_pair_counts[pair] <= 0:
-                    del bytes_pair_counts[pair]
-                bytes_pair_tuples_present[pair].remove(bytes_tuple)
-                if len(bytes_pair_tuples_present[pair]) == 0:
-                    del bytes_pair_tuples_present[pair]
-
-            # Update each final bytes pair count and add the new bytes tuple to bytes_pair_tuples_present
-            for pair, pair_count in after_merge_bytes_pair_counts.items():
-                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + pair_count
-                bytes_pair_tuples_present[pair].add(new_bytes_tuple)
-
-            # Store for later processing
-            bytes_tuples_to_delete.append(bytes_tuple)
-            bytes_tuples_to_add.append(new_bytes_tuple)
-            counts_to_add.append(count)
-
-        # Delete the old bytes_tuples and add the new ones after iteration is complete
-        for bytes_tuple in bytes_tuples_to_delete:
-            del bytes_counts[bytes_tuple]
-        for new_bytes_tuple, tuple_count in zip(bytes_tuples_to_add, counts_to_add):
-            bytes_counts[new_bytes_tuple] = bytes_counts.get(new_bytes_tuple, 0) + tuple_count
-
-        # Add the merged pair to merges
-        merges.append(most_freq_pair)
-
-    # Add all other tokens until we've filled the vocabulary
-    while vocab_index < vocab_size and len(bytes_pair_counts) > 0:
-        # Find the most frequent byte pair
-        most_freq_pair = get_most_freq_pair()
-
-        # Add to vocabulary
-        merged_bytes = most_freq_pair[0] + most_freq_pair[1]
-        vocab[vocab_index] = merged_bytes
-        vocab_index += 1
-
-        # Merge it
-        merge_pair(most_freq_pair)
+    # Fill vocabulary by adding initial items and merging pairs
+    vocab_index, merges = fill_vocab(
+        vocab, vocab_size, special_tokens, bytes_pair_counts, bytes_pair_tuples_present, bytes_counts
+    )
 
     return (vocab, merges)
 
