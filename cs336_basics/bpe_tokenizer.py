@@ -28,7 +28,7 @@ def tokenize_dataset_bpe(
 
     # Pretokenization
     bytes_counts: Counter[tuple[bytes, ...]] = pre_tokenize_dataset_bpe(
-        input_path=input_path, special_tokens=special_tokens, num_desired_processes=1
+        input_path=input_path, special_tokens=special_tokens, num_desired_processes=24
     )
 
     def count_bytes_pairs(bytes_counts: Counter[tuple[bytes, ...]]) -> Counter[tuple[bytes, bytes]]:
@@ -52,6 +52,39 @@ def tokenize_dataset_bpe(
     for i in range(256):
         vocab[vocab_index] = bytes([i])
         vocab_index += 1
+
+    # # Use a SortedDict to get_most_freq_pair quicker
+    # sorted_byte_pair_frequency_tracker = SortedBytePairFrequencyTracker(bytes_pair_counts=bytes_pair_counts)
+    # def get_most_freq_pair_fast() -> tuple[bytes, bytes]:
+    #     return sorted_byte_pair_frequency_tracker.get_most_frequent_byte_pair()
+
+    # def merge_pair_fast(most_freq_pair: tuple[bytes, bytes]):
+
+    #     # We want to replace all instances of the most frequent pair with a single bytes object
+    #     # We need to handle cases where this byte pair occurs multiple times in the same bytes tuple
+    #     # We will make a list of indices where the most frequent pair occurs
+    #     # We will then replace them iteratively and add/subtract the counts from the sorted byte pair frequency tracker
+    #     # Then since each pair takes two indices, we will keep a counter of how many indices we have processed to update
+    #     # the later pair indices for proper updating
+
+    #     # Get the indices of the most frequent pair
+    #     for bytes_tuple, count in bytes_counts.items():
+    #         indices_to_replace: list[int] = []
+    #         for i in range(len(bytes_tuple) - 1):
+    #             if bytes_tuple[i] == most_freq_pair[0] and bytes_tuple[i + 1] == most_freq_pair[1]:
+    #                 indices_to_replace.append(i)
+
+    #         # Replace the indices
+    #         pairs_replaced: int = 0
+    #         for i in range(len(indices_to_replace) - 1):
+    #             bytes_tuple[indices_to_replace[i]] = bytes_tuple[indices_to_replace[i]] + bytes_tuple[indices_to_replace[i + 1]]
+    #             bytes_tuple[indices_to_replace[i + 1]] = None
+
+    #         # Remove the None values
+
+    #     sorted_byte_pair_frequency_tracker.subtract(byte_pair=most_freq_pair, count=1)
+    #     new_bytes_tuple = most_freq_pair[0] + most_freq_pair[1]
+    #     sorted_byte_pair_frequency_tracker.add(byte_pair=new_bytes_tuple, count=1)
 
     # Helper function for merging to find the most frequent pair this iteration
     def get_most_freq_pair() -> tuple[bytes, bytes]:
