@@ -68,7 +68,7 @@ def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[b
 
 
 def pre_tokenize_dataset_bpe(
-    input_path: str, special_tokens: list[str], num_desired_processes: int = mp.cpu_count()
+    input_path: str | os.PathLike, special_tokens: list[str], num_desired_processes: int = mp.cpu_count()
 ) -> Counter[tuple[bytes, ...]]:
     """
     Parallel implementation of pre-tokenization for Byte-Pair Encoding (BPE) tokenizer
@@ -100,10 +100,3 @@ def pre_tokenize_dataset_bpe(
         pre_tokenization_counts = sum(pre_tokenized_counters, Counter())
 
     return pre_tokenization_counts
-
-
-# pre_tokenized_counts_1 = pre_tokenize_dataset_bpe("/home/matthew/Code/assignment1-basics/data/test.txt", ["<|endoftext|>"], 2)
-# print(pre_tokenized_counts_1)
-# pre_tokenized_counts_2 = pre_tokenize_dataset_bpe("/home/matthew/Code/assignment1-basics/data/test.txt", ["<|endoftext|>"], 24)
-# print(pre_tokenized_counts_2)
-# assert pre_tokenized_counts_1 == pre_tokenized_counts_2

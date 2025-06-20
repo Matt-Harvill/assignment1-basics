@@ -1,40 +1,26 @@
-from dataclasses import dataclass
 from cs336_basics.pretokenization_example import pre_tokenize_dataset_bpe
 from collections import Counter
+import logging
+import os
+
+# Configure logging
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logger = logging.getLogger(__name__)
 
 
-@dataclass
-class BPEOutput:
-    vocab: dict[int, bytes]
-    merges: list[tuple[bytes, bytes]]
-
-
-def tokenize_dataset_bpe(input_path: str, vocab_size: int, special_tokens: list[str]) -> BPEOutput:
+def tokenize_dataset_bpe(
+    input_path: str | os.PathLike, vocab_size: int, special_tokens: list[str]
+) -> tuple[dict[int, bytes], list[tuple[bytes, bytes]]]:
     """
-        Deliverable: Write a function that, given a path to an input text file, trains a (byte-level) BPE
-    tokenizer. Your BPE training function should handle (at least) the following input parameters:
-    input_path: str Path to a text file with BPE tokenizer training data.
-    vocab_size: int A positive integer that defines the maximum final vocabulary size (including the
-    initial byte vocabulary, vocabulary items produced from merging, and any special tokens).
-    special_tokens: list[str] A list of strings to add to the vocabulary. These special tokens do not
-    otherwise affect BPE training.
-    Your BPE training function should return the resulting vocabulary and merges:
-    vocab: dict[int, bytes] The tokenizer vocabulary, a mapping from int (token ID in the vocabu-
-    lary) to bytes (token bytes).
-    merges: list[tuple[bytes, bytes]] A list of BPE merges produced from training. Each list item
-    is a tuple of bytes (<token1>, <token2>), representing that <token1> was merged with
-    <token2>. The merges should be ordered by order of creation.
-    To test your BPE training function against our provided tests, you will first need to implement the
-    test adapter at [adapters.run_train_bpe]. Then, run uv run pytest tests/test_train_bpe.py.
-    Your implementation should be able to pass all tests. Optionally (this could be a large time-investment),
-    you can implement the key parts of your training method using some systems language, for instance
-    C++ (consider cppyy for this) or Rust (using PyO3). If you do this, be aware of which operations
-    require copying vs reading directly from Python memory, and make sure to leave build instructions, or
-    make sure it builds using only pyproject.toml. Also note that the GPT-2 regex is not well-supported
-    in most regex engines and will be too slow in most that do. We have verified that Oniguruma is
-    reasonably fast and supports negative lookahead, but the regex package in Python is, if anything,
-    even faster.
-    9
+    Tokenizes the dataset using Byte-Pair Encoding (BPE)
+
+    Args:
+        input_path (str | os.PathLike): Path to the input text file
+        vocab_size (int): The maximum final vocabulary size (including the initial byte vocabulary, vocabulary items produced from merging, and any special tokens)
+        special_tokens (list[str]): A list of strings to add to the vocabulary. These special tokens do not otherwise affect BPE training.
+
+    Returns:
+        tuple[dict[int, bytes], list[tuple[bytes, bytes]]]: The tokenizer vocabulary and merges
     """
 
     vocab: dict[int, bytes] = {}
@@ -42,45 +28,134 @@ def tokenize_dataset_bpe(input_path: str, vocab_size: int, special_tokens: list[
 
     # Pretokenization
     bytes_counts: Counter[tuple[bytes, ...]] = pre_tokenize_dataset_bpe(
-        input_path=input_path, special_tokens=special_tokens
+        input_path=input_path, special_tokens=special_tokens, num_desired_processes=1
     )
 
+    def count_bytes_pairs(bytes_counts: Counter[tuple[bytes, ...]]) -> Counter[tuple[bytes, bytes]]:
+        byte_pair_counts: Counter[tuple[bytes, bytes]] = Counter()
+        for bytes_tuple, count in bytes_counts.items():
+            for i in range(len(bytes_tuple) - 1):
+                byte_pair_counts[(bytes_tuple[i], bytes_tuple[i + 1])] += count
+        return byte_pair_counts
+
     # Count all byte pairs
-    byte_pair_counts: Counter[tuple[bytes, bytes]] = Counter()
-    for bytes_tuple, count in bytes_counts.items():
-        # Get 2 bytes at a time
-        for i in range(len(bytes_tuple) - 1):
-            byte_pair_counts[(bytes_tuple[i], bytes_tuple[i + 1])] += count
-
-    print(f"bytes_counts: {bytes_counts}\n\n")
-    print(f"byte_pair_counts: {byte_pair_counts}\n\n")
-
-    # # Before adding to vocab and merging, we want to sort the counts
-    # for key, count in byte_pair_counts.items():
-    #     if count not in sorted_byte_pair_counts:
-    #         sorted_byte_pair_counts[count] = []
-    #     sorted_byte_pair_counts[count].append(key)
+    bytes_pair_counts: Counter[tuple[bytes, bytes]] = count_bytes_pairs(bytes_counts=bytes_counts)
 
     # Now finally start adding bytes to the vocab
     # Add special tokens first
     vocab_index = 0
     for special_token in special_tokens:
         vocab[vocab_index] = special_token.encode("utf-8")
+        vocab_index += 1
 
-    # # Keep merging until we've filled the vocabulary
-    # while vocab_index < vocab_size or len(sorted_byte_pair_counts) == 0:
-    #     count, bytes_tuple = sorted_byte_pair_counts.peekitem()
+    # Add the individual bytes to the vocab
+    for i in range(256):
+        vocab[vocab_index] = bytes([i])
+        vocab_index += 1
 
-    #     if len(list_of_bytes) == 1:
-    #         merges.append()
+    # Helper function for merging to find the most frequent pair this iteration
+    def get_most_freq_pair() -> tuple[bytes, bytes]:
+        most_freq: int = 0
+        most_freq_byte_pairs: list[tuple[bytes, bytes]] = []
 
-    return BPEOutput(vocab, merges)
+        # Get the highest count in the list
+        for byte_pair, count in bytes_pair_counts.items():
+            if count > most_freq:
+                most_freq_byte_pairs = [byte_pair]
+                most_freq = count
+            elif count == most_freq:
+                most_freq_byte_pairs.append(byte_pair)
+
+        # Find the lexographically highest value from the most_freq_byte_pairs
+        # Sort based on the raw byte values
+        highest_lexographic_pair = max(most_freq_byte_pairs, key=lambda x: (x[0], x[1]))
+
+        return highest_lexographic_pair
+
+    # Merge a pair of bytes (handling the bytes_counts and bytes_pair_counts updates)
+    def merge_pair(most_freq_pair: tuple[bytes, bytes]):
+        nonlocal bytes_pair_counts, bytes_counts, merges
+
+        bytes_tuples_to_delete: list[tuple[bytes, ...]] = []
+        bytes_tuples_to_add: list[tuple[bytes, ...]] = []
+        counts_to_add: list[int] = []
+
+        for bytes_tuple, count in bytes_counts.items():
+            # See if the most_freq_pair in this tuple of bytes
+            pair_in_tuple = False
+            for i in range(len(bytes_tuple) - 1):
+                if most_freq_pair == (bytes_tuple[i], bytes_tuple[i + 1]):
+                    pair_in_tuple = True
+                    break
+
+            # Only change this tuple if the pair is present
+            if not pair_in_tuple:
+                continue
+
+            # Create the new tuple with merge(s)
+            new_bytes_list: list[bytes] = []
+            i = 0
+            while i < len(bytes_tuple) - 1:
+                if most_freq_pair == (bytes_tuple[i], bytes_tuple[i + 1]):
+                    new_bytes_list.append(
+                        bytes_tuple[i] + bytes_tuple[i + 1]
+                    )  # Join the bytes together into single bytes object
+                    i += 2  # Skip the next byte since we merged it
+                else:
+                    new_bytes_list.append(bytes_tuple[i])
+                    i += 1
+            # Add the last byte if we haven't processed it
+            if i < len(bytes_tuple):
+                new_bytes_list.append(bytes_tuple[i])
+            new_bytes_tuple: tuple[bytes, ...] = tuple(new_bytes_list)
+
+            # Recount
+            before_merge_bytes_pair_counts = count_bytes_pairs(Counter({bytes_tuple: count}))
+            after_merge_bytes_pair_counts = count_bytes_pairs(Counter({new_bytes_tuple: count}))
+            bytes_pair_counts -= before_merge_bytes_pair_counts
+            bytes_pair_counts += after_merge_bytes_pair_counts
+
+            # Store for later processing
+            bytes_tuples_to_delete.append(bytes_tuple)
+            bytes_tuples_to_add.append(new_bytes_tuple)
+            counts_to_add.append(count)
+
+        # Delete the old bytes_tuples and add the new ones after iteration is complete
+        for bytes_tuple in bytes_tuples_to_delete:
+            del bytes_counts[bytes_tuple]
+        for new_bytes_tuple, count in zip(bytes_tuples_to_add, counts_to_add):
+            bytes_counts[new_bytes_tuple] = bytes_counts.get(new_bytes_tuple, 0) + count
+
+        # Add the merged pair to merges
+        merges.append(most_freq_pair)
+
+    # Add all other tokens until we've filled the vocabulary
+    while vocab_index < vocab_size and len(bytes_pair_counts) > 0:
+        logger.debug(f"bytes_counts: {bytes_counts}")
+        logger.debug(f"byte_pair_counts: {bytes_pair_counts}")
+
+        # Find the most frequent byte pair
+        most_freq_pair = get_most_freq_pair()
+        logger.debug(f"most_freq_pair: {most_freq_pair}")
+
+        # Add to vocabulary
+        merged_bytes = most_freq_pair[0] + most_freq_pair[1]
+        vocab[vocab_index] = merged_bytes
+        vocab_index += 1
+
+        # Merge it
+        merge_pair(most_freq_pair)
+
+    logger.debug(f"Final bytes_counts: {bytes_counts}")
+    logger.debug(f"Final byte_pair_counts: {bytes_pair_counts}")
+
+    return (vocab, merges)
 
 
 if __name__ == "__main__":
-    # Test the tokenize function
-    import cProfile
-    import pstats
+    # # Test the tokenize function
+    # import cProfile
+    # import pstats
 
     # # Profile and save results
     # cProfile.run(
@@ -88,13 +163,25 @@ if __name__ == "__main__":
     #     "profile_stats",
     # )
 
-    # Profile and save results
-    cProfile.run(
-        'tokenize_dataset_bpe(input_path="/home/matthew/Code/assignment1-basics/data/test.txt", vocab_size=0, special_tokens=["<|endoftext|>"])',
-        "profile_stats",
+    # # Profile and save results
+    # cProfile.run(
+    #     'tokenize_dataset_bpe(input_path="/home/matthew/Code/assignment1-basics/data/simple_test.txt", vocab_size=10, special_tokens=["<|endoftext|>"])',
+    #     "profile_stats",
+    # )
+
+    # # Analyze results
+    # stats = pstats.Stats("profile_stats")
+    # stats.sort_stats("cumulative")
+    # stats.print_stats(10)  # Top 10 functions
+
+    vocab, merges = tokenize_dataset_bpe(
+        input_path="/home/matthew/Code/assignment1-basics/data/test.txt",
+        vocab_size=1000,
+        special_tokens=["<|endoftext|>"],
     )
 
-    # Analyze results
-    stats = pstats.Stats("profile_stats")
-    stats.sort_stats("cumulative")
-    stats.print_stats(10)  # Top 10 functions
+    # Print the vocab and merges
+    logger.info(f"vocab: {vocab}")
+    logger.info(f"merges: {merges}")
+    logger.info(f"Vocabulary size: {len(vocab)}")
+    logger.info(f"Number of merges: {len(merges)}")
