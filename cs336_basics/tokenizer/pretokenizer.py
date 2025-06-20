@@ -50,11 +50,15 @@ def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special
     return sorted(set(chunk_boundaries))
 
 
-def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[bytes, ...]]:
+def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> tuple[Counter[tuple[bytes, ...]], list[str], bool]:
+    """
+    Pre-tokenize a chunk of text. Additionally, return the special tokens found in the chunk (and their order)
+    for reconstruction later.
+    """
     # Pre-tokenization pattern
     regex_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
     # Cut out the special tokens first - escape regex metacharacters for safety
-    subchunks, _, _ = split_text_on_special_tokens(chunk, special_tokens)
+    subchunks, special_tokens_found, special_tokens_first = split_text_on_special_tokens(chunk, special_tokens)
 
     # Run pre-tokenization on each subchunk and store counts for each pre-token across subchunks
     byte_counts: Counter[tuple[bytes, ...]] = Counter()
@@ -65,7 +69,7 @@ def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[b
             matched_str_bytes_tuple = tuple(matched_str_bytes[i : i + 1] for i in range(len(matched_str_bytes)))
             byte_counts[matched_str_bytes_tuple] += 1
 
-    return byte_counts
+    return byte_counts, special_tokens_found, special_tokens_first
 
 
 def pretokenize(
@@ -95,9 +99,13 @@ def pretokenize(
     with mp.Pool(num_processes) as pool:
         # Count bytes counts per process
         pre_tokenize_chunk_partial = partial(pre_tokenize_chunk, special_tokens=special_tokens)
-        pre_tokenized_counters: list[Counter[tuple[bytes, ...]]] = pool.map(pre_tokenize_chunk_partial, chunks)
+        pre_tokenized_outputs: list[tuple[Counter[tuple[bytes, ...]], list[str], bool]] = pool.map(
+            pre_tokenize_chunk_partial, chunks
+        )
+
+        pre_tokenized_counters, _, _ = zip(*pre_tokenized_outputs)
 
         # Aggregate counts across processes
-        pre_tokenization_counts = sum(pre_tokenized_counters, Counter())
+        pre_tokenization_counts: Counter[tuple[bytes, ...]] = sum(pre_tokenized_counters, Counter())
 
     return pre_tokenization_counts
