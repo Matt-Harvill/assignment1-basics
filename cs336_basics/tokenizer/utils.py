@@ -103,4 +103,8 @@ def split_text_on_special_tokens(text: str, special_tokens: list[str]) -> tuple[
     # Check if text starts with a special token
     starts_with_special_token = any(text.startswith(token) for token in special_tokens)
 
+    # If the first segment is empty, remove it (This means that the first special token is at the start of the text)
+    if text_segments[0] == "":
+        text_segments = text_segments[1:]
+
     return text_segments, special_tokens_found, starts_with_special_token

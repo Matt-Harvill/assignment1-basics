@@ -1,4 +1,5 @@
 from collections.abc import Iterable, Iterator
+
 from .utils import load_vocab_and_merges, convert_vocab_to_bytes, convert_merges_to_bytes
 from pathlib import Path
 
@@ -40,6 +41,12 @@ class Tokenizer:
         """
         Encode an input text into a sequence of token IDs.
         """
+
+        # text_segments, special_tokens, special_tokens_first = pre_tokenize_chunk_ordered(text, [] if self.special_tokens is None else self.special_tokens)
+
+        # for text_segment in text_segments:
+        #     if text_segment in self.vocab:
+
         raise NotImplementedError("encode method not yet implemented")
 
     def encode_iterable(self, iterable: Iterable[str]) -> Iterator[int]:
