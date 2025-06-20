@@ -1,18 +1,17 @@
+from collections import Counter
 import os
 from typing import BinaryIO
+import multiprocessing as mp
+import regex as re
+from functools import partial
 
-def find_chunk_boundaries(
-    file: BinaryIO, 
-    desired_num_chunks: int, 
-    split_special_token: bytes
-) -> list[int]:
+
+def find_chunk_boundaries(file: BinaryIO, desired_num_chunks: int, split_special_token: bytes) -> list[int]:
     """
     Chunk the file into parts that can be counted independently.
     May return fewer chunks if the boundaries end up overlapping.
     """
-    assert isinstance(split_special_token, bytes), (
-        "Must represent special token as a bytestring"
-    )
+    assert isinstance(split_special_token, bytes), "Must represent special token as a bytestring"
 
     # Get total file size in bytes
     file.seek(0, os.SEEK_END)
@@ -49,14 +48,62 @@ def find_chunk_boundaries(
     # Make sure all boundaries are unique, but might be fewer than desired_num_chunks
     return sorted(set(chunk_boundaries))
 
-## Usage
-with open(..., "rb") as f:
-    boundaries = find_chunk_boundaries(
-        f, num_processes, "<|endoftext|>".encode("utf-8"))
-        
-    # The following is a serial implementation, but you can parallelize this 
-    # by sending each start/end pair to a set of processes.
-    for start, end in zip(boundaries[:-1], boundaries[1:]):
-        f.seek(start)
-        chunk = f.read(end - start).decode("utf-8", errors="ignore")
-        # Run pre-tokenization on your chunk and store the counts for each pre-token
+
+def pre_tokenize_chunk(chunk: str, special_tokens: list[str]) -> Counter[tuple[bytes, ...]]:
+    # Pre-tokenization pattern
+    regex_pattern = r"""'(?:[sdmt]|ll|ve|re)| ?\p{L}+| ?\p{N}+| ?[^\s\p{L}\p{N}]+|\s+(?!\S)|\s+"""
+    # Cut out the special tokens first
+    subchunks = re.split(r"|".join(special_tokens), chunk)
+
+    # Run pre-tokenization on each subchunk and store counts for each pre-token across subchunks
+    byte_counts: Counter[tuple[bytes, ...]] = Counter()
+    for subchunk in subchunks:
+        for match in re.finditer(regex_pattern, subchunk):
+            matched_str = match.group()
+            matched_str_bytes = matched_str.encode("utf-8")
+            matched_str_bytes_tuple = tuple(matched_str_bytes[i : i + 1] for i in range(len(matched_str_bytes)))
+            byte_counts[matched_str_bytes_tuple] += 1
+
+    return byte_counts
+
+
+def pre_tokenize_dataset_bpe(
+    input_path: str, special_tokens: list[str], num_desired_processes: int = mp.cpu_count()
+) -> Counter[tuple[bytes, ...]]:
+    """
+    Parallel implementation of pre-tokenization for Byte-Pair Encoding (BPE) tokenizer
+    - Uses up to all processes if desired
+    """
+
+    num_processes = min(mp.cpu_count(), num_desired_processes)
+
+    # Read the input file in binary mode
+    with open(input_path, "rb") as f:
+        # Find chunk boundaries to split for efficient parallelization
+        special_token_bytes: bytes = b"<|endoftext|>"
+        boundaries = find_chunk_boundaries(
+            file=f, desired_num_chunks=num_processes, split_special_token=special_token_bytes
+        )
+        chunks: list[str] = []
+        for start, end in zip(boundaries[:-1], boundaries[1:]):
+            f.seek(start)
+            chunk = f.read(end - start).decode("utf-8", errors="ignore")
+            chunks.append(chunk)
+
+    # Split the work across processes with a mp Pool
+    with mp.Pool(num_processes) as pool:
+        # Count bytes counts per process
+        pre_tokenize_chunk_partial = partial(pre_tokenize_chunk, special_tokens=special_tokens)
+        pre_tokenized_counters: list[Counter[tuple[bytes, ...]]] = pool.map(pre_tokenize_chunk_partial, chunks)
+
+        # Aggregate counts across processes
+        pre_tokenization_counts = sum(pre_tokenized_counters, Counter())
+
+    return pre_tokenization_counts
+
+
+# pre_tokenized_counts_1 = pre_tokenize_dataset_bpe("/home/matthew/Code/assignment1-basics/data/test.txt", ["<|endoftext|>"], 2)
+# print(pre_tokenized_counts_1)
+# pre_tokenized_counts_2 = pre_tokenize_dataset_bpe("/home/matthew/Code/assignment1-basics/data/test.txt", ["<|endoftext|>"], 24)
+# print(pre_tokenized_counts_2)
+# assert pre_tokenized_counts_1 == pre_tokenized_counts_2
