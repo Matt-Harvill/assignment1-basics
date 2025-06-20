@@ -1,8 +1,5 @@
 import json
 import time
-import cProfile
-import pstats
-import io
 
 from .adapters import run_train_bpe
 from .common import FIXTURES_PATH, gpt2_bytes_to_unicode
@@ -17,29 +14,14 @@ def test_train_bpe_speed():
     takes around 3 seconds.
     """
     input_path = FIXTURES_PATH / "corpus.en"
-
-    # Set up profiler
-    profiler = cProfile.Profile()
-
     start_time = time.time()
-    profiler.enable()
     _, _ = run_train_bpe(
         input_path=input_path,
         vocab_size=500,
         special_tokens=["<|endoftext|>"],
     )
-    profiler.disable()
     end_time = time.time()
-
-    # Print profiling results
-    s = io.StringIO()
-    ps = pstats.Stats(profiler, stream=s).sort_stats("cumulative")
-    ps.print_stats(20)  # Print top 20 functions
-    print("\n=== cProfile Results (Top 20 Functions) ===")
-    print(s.getvalue())
-
-    total_time = end_time - start_time
-    assert total_time < 1.5
+    assert end_time - start_time < 1.5
 
 
 def test_train_bpe():
