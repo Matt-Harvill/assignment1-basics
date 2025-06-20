@@ -1,6 +1,7 @@
 from cs336_basics.pretokenization_example import pre_tokenize_dataset_bpe
 import logging
 import os
+from collections import defaultdict
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -27,19 +28,31 @@ def tokenize_dataset_bpe(
 
     # Pretokenization
     bytes_counts: dict[tuple[bytes, ...], int] = pre_tokenize_dataset_bpe(
-        input_path=input_path, special_tokens=special_tokens, num_desired_processes=24
+        input_path=input_path, special_tokens=special_tokens, num_desired_processes=2
     )
 
     def count_bytes_pairs(bytes_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
-        byte_pair_counts: dict[tuple[bytes, bytes], int] = {}
+        bytes_pair_counts: dict[tuple[bytes, bytes], int] = {}
         for bytes_tuple, count in bytes_counts.items():
             for i in range(len(bytes_tuple) - 1):
                 pair = (bytes_tuple[i], bytes_tuple[i + 1])
-                byte_pair_counts[pair] = byte_pair_counts.get(pair, 0) + count
-        return byte_pair_counts
+                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + count
+        return bytes_pair_counts
+
+    def count_bytes_pairs_and_tuples_present(
+        bytes_counts: dict[tuple[bytes, ...], int]
+    ) -> tuple[dict[tuple[bytes, bytes], int], dict[tuple[bytes, bytes], set[tuple[bytes, ...]]]]:
+        bytes_pair_counts: dict[tuple[bytes, bytes], int] = {}
+        bytes_pair_tuples_present: dict[tuple[bytes, bytes], set[tuple[bytes, ...]]] = defaultdict(set)
+        for bytes_tuple, count in bytes_counts.items():
+            for i in range(len(bytes_tuple) - 1):
+                pair = (bytes_tuple[i], bytes_tuple[i + 1])
+                bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + count
+                bytes_pair_tuples_present[pair].add(bytes_tuple)
+        return bytes_pair_counts, bytes_pair_tuples_present
 
     # Count all byte pairs
-    bytes_pair_counts: dict[tuple[bytes, bytes], int] = count_bytes_pairs(bytes_counts=bytes_counts)
+    bytes_pair_counts, bytes_pair_tuples_present = count_bytes_pairs_and_tuples_present(bytes_counts=bytes_counts)
 
     # Now finally start adding bytes to the vocab
     # Add special tokens first
@@ -74,29 +87,24 @@ def tokenize_dataset_bpe(
 
     # Merge a pair of bytes (handling the bytes_counts and bytes_pair_counts updates)
     def merge_pair(most_freq_pair: tuple[bytes, bytes]):
-        nonlocal bytes_pair_counts, bytes_counts, merges
+        nonlocal bytes_pair_counts, bytes_counts, merges, bytes_pair_tuples_present
 
         bytes_tuples_to_delete: list[tuple[bytes, ...]] = []
         bytes_tuples_to_add: list[tuple[bytes, ...]] = []
         counts_to_add: list[int] = []
 
-        for bytes_tuple, count in bytes_counts.items():
-            # See if the most_freq_pair in this tuple of bytes
-            pair_in_tuple = False
-            for i in range(len(bytes_tuple) - 1):
-                if most_freq_pair == (bytes_tuple[i], bytes_tuple[i + 1]):
-                    pair_in_tuple = True
-                    break
+        # Create a copy of the set to iterate over safely
+        bytes_tuples_to_process = list(bytes_pair_tuples_present[most_freq_pair])
 
-            # Only change this tuple if the pair is present
-            if not pair_in_tuple:
-                continue
+        for bytes_tuple in bytes_tuples_to_process:
+            count = bytes_counts[bytes_tuple]
 
             # Create the new tuple with merge(s)
             new_bytes_list: list[bytes] = []
             i = 0
             while i < len(bytes_tuple) - 1:
-                if most_freq_pair == (bytes_tuple[i], bytes_tuple[i + 1]):
+                current_pair = (bytes_tuple[i], bytes_tuple[i + 1])
+                if current_pair == most_freq_pair:
                     new_bytes_list.append(
                         bytes_tuple[i] + bytes_tuple[i + 1]
                     )  # Join the bytes together into single bytes object
@@ -113,16 +121,19 @@ def tokenize_dataset_bpe(
             before_merge_bytes_pair_counts = count_bytes_pairs({bytes_tuple: count})
             after_merge_bytes_pair_counts = count_bytes_pairs({new_bytes_tuple: count})
 
-            # Subtract before_merge counts
+            # Clear the old bytes pair counts and tuples present
             for pair, pair_count in before_merge_bytes_pair_counts.items():
                 bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) - pair_count
-                # Remove zero or negative counts
                 if bytes_pair_counts[pair] <= 0:
                     del bytes_pair_counts[pair]
+                bytes_pair_tuples_present[pair].remove(bytes_tuple)
+                if len(bytes_pair_tuples_present[pair]) == 0:
+                    del bytes_pair_tuples_present[pair]
 
-            # Add after_merge counts
+            # Update each final bytes pair count and add the new bytes tuple to bytes_pair_tuples_present
             for pair, pair_count in after_merge_bytes_pair_counts.items():
                 bytes_pair_counts[pair] = bytes_pair_counts.get(pair, 0) + pair_count
+                bytes_pair_tuples_present[pair].add(new_bytes_tuple)
 
             # Store for later processing
             bytes_tuples_to_delete.append(bytes_tuple)
@@ -132,8 +143,8 @@ def tokenize_dataset_bpe(
         # Delete the old bytes_tuples and add the new ones after iteration is complete
         for bytes_tuple in bytes_tuples_to_delete:
             del bytes_counts[bytes_tuple]
-        for new_bytes_tuple, count in zip(bytes_tuples_to_add, counts_to_add):
-            bytes_counts[new_bytes_tuple] = bytes_counts.get(new_bytes_tuple, 0) + count
+        for new_bytes_tuple, tuple_count in zip(bytes_tuples_to_add, counts_to_add):
+            bytes_counts[new_bytes_tuple] = bytes_counts.get(new_bytes_tuple, 0) + tuple_count
 
         # Add the merged pair to merges
         merges.append(most_freq_pair)
@@ -157,7 +168,7 @@ def tokenize_dataset_bpe(
 if __name__ == "__main__":
     vocab, merges = tokenize_dataset_bpe(
         input_path="/home/matthew/Code/assignment1-basics/data/test.txt",
-        vocab_size=1000,
+        vocab_size=270,
         special_tokens=["<|endoftext|>"],
     )
 
