@@ -307,15 +307,31 @@ if __name__ == "__main__":
 
     # Save vocab
     with open(output_dir / "vocab.json", "w") as f:
-        json.dump({str(k): v.decode("utf-8", errors="replace") for k, v in vocab.items()}, f, indent=2)
+        vocab_dict = {}
+        for token_id, token_bytes in vocab.items():
+            if len(token_bytes) == 1:
+                decoded_value = chr(token_bytes[0] + 256)
+            else:
+                decoded_value = token_bytes.decode("utf-8", errors="replace")
+            vocab_dict[str(token_id)] = decoded_value
+        json.dump(vocab_dict, f, indent=2, ensure_ascii=False)
     logger.info(f"Saved vocab to {output_dir / 'vocab.json'}")
 
     # Save merges
     with open(output_dir / "merges.txt", "w") as f:
         for merge in merges:
-            f.write(
-                f"\"{merge[0].decode('utf-8', errors='replace')}\" \"{merge[1].decode('utf-8', errors='replace')}\"\n"
-            )
+            # Handle single bytes consistently with vocab.json
+            if len(merge[0]) == 1:
+                first_part = chr(merge[0][0] + 256)
+            else:
+                first_part = merge[0].decode("utf-8", errors="replace")
+
+            if len(merge[1]) == 1:
+                second_part = chr(merge[1][0] + 256)
+            else:
+                second_part = merge[1].decode("utf-8", errors="replace")
+
+            f.write(f'"{first_part}" "{second_part}"\n')
     logger.info(f"Saved merges to {output_dir / 'merges.txt'}")
 
     logger.info(f"Saved tokenizer to {output_dir}")
