@@ -131,6 +131,7 @@ if __name__ == "__main__":
     # Test the tokenizer on a few small examples
 
     test_strings = [
+        "🙃",
         "Hello, world!",
         "   Hello, world! This is a test.",
         "Hello, world! This is a test. This is a test. This is a test. This is a test.",

@@ -9,6 +9,7 @@ import cProfile
 import pstats
 import json
 from pathlib import Path
+from .utils import byte_to_string
 
 
 def count_bytes_pairs(bytes_counts: dict[tuple[bytes, ...], int]) -> dict[tuple[bytes, bytes], int]:
@@ -309,10 +310,7 @@ if __name__ == "__main__":
     with open(output_dir / "vocab.json", "w") as f:
         vocab_dict = {}
         for token_id, token_bytes in vocab.items():
-            if len(token_bytes) == 1:
-                decoded_value = chr(token_bytes[0] + 256)
-            else:
-                decoded_value = token_bytes.decode("utf-8", errors="replace")
+            decoded_value = byte_to_string(token_bytes)
             vocab_dict[str(token_id)] = decoded_value
         json.dump(vocab_dict, f, indent=2, ensure_ascii=False)
     logger.info(f"Saved vocab to {output_dir / 'vocab.json'}")
@@ -320,16 +318,8 @@ if __name__ == "__main__":
     # Save merges
     with open(output_dir / "merges.txt", "w") as f:
         for merge in merges:
-            # Handle single bytes consistently with vocab.json
-            if len(merge[0]) == 1:
-                first_part = chr(merge[0][0] + 256)
-            else:
-                first_part = merge[0].decode("utf-8", errors="replace")
-
-            if len(merge[1]) == 1:
-                second_part = chr(merge[1][0] + 256)
-            else:
-                second_part = merge[1].decode("utf-8", errors="replace")
+            first_part = byte_to_string(merge[0])
+            second_part = byte_to_string(merge[1])
 
             f.write(f'"{first_part}" "{second_part}"\n')
     logger.info(f"Saved merges to {output_dir / 'merges.txt'}")

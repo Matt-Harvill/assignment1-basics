@@ -43,6 +43,31 @@ def load_vocab_and_merges(vocab_filepath: str | Path, merges_filepath: str | Pat
     return vocab, merges
 
 
+def get_single_byte_tokens() -> list[str]:
+    """
+    Get a list of all single byte tokens.
+    """
+    return [chr(i + 256) for i in range(256)]
+
+
+def byte_to_string(byte: bytes) -> str:
+    """
+    Convert a byte to a string.
+    """
+    if len(byte) == 1:
+        return chr(byte[0] + 256)
+    return byte.decode("utf-8", errors="replace")
+
+
+def string_to_byte(string: str) -> bytes:
+    """
+    Convert a string to a byte.
+    """
+    if string in get_single_byte_tokens():
+        return bytes([ord(string) - 256])
+    return string.encode("utf-8")
+
+
 def convert_vocab_to_bytes(vocab: dict[int, str]) -> dict[int, bytes]:
     """
     Convert vocab values from strings to bytes.
@@ -53,7 +78,7 @@ def convert_vocab_to_bytes(vocab: dict[int, str]) -> dict[int, bytes]:
     Returns:
         Dictionary mapping token IDs to bytes tokens
     """
-    return {k: v.encode("utf-8") for k, v in vocab.items()}
+    return {k: string_to_byte(v) for k, v in vocab.items()}
 
 
 def convert_merges_to_bytes(merges: list[str] | None) -> list[tuple[bytes, bytes]]:
@@ -73,7 +98,7 @@ def convert_merges_to_bytes(merges: list[str] | None) -> list[tuple[bytes, bytes
     for merge in merges:
         parts = merge.split()
         if len(parts) == 2:
-            merges_bytes.append((parts[0].encode("utf-8"), parts[1].encode("utf-8")))
+            merges_bytes.append((string_to_byte(parts[0]), string_to_byte(parts[1])))
 
     return merges_bytes
 
