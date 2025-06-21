@@ -53,18 +53,22 @@ class Tokenizer:
         # Then we loop over the merges and apply them to our text segments
         for merge in self.merges:
             for text_segment_subset_bytes in text_segments_bytes:
-                for text_segment_bytes in text_segment_subset_bytes:
+                for i, text_segment_bytes in enumerate(text_segment_subset_bytes):
                     merged_segment_bytes: list[bytes] = []
-                    i = 0
-                    while i < len(text_segment_bytes) - 1:
-                        if text_segment_bytes[i] == merge[0] and text_segment_bytes[i + 1] == merge[1]:
+                    j = 0
+                    while j < len(text_segment_bytes) - 1:
+                        if text_segment_bytes[j] == merge[0] and text_segment_bytes[j + 1] == merge[1]:
                             # Replace two bytes objects with the concatenated bytes object
-                            merged_segment_bytes.append(text_segment_bytes[i] + text_segment_bytes[i + 1])
-                            i += 2
+                            merged_segment_bytes.append(text_segment_bytes[j] + text_segment_bytes[j + 1])
+                            j += 2
                         else:
-                            merged_segment_bytes.append(text_segment_bytes[i])
-                            i += 1
-                    text_segment_bytes = tuple(merged_segment_bytes)
+                            merged_segment_bytes.append(text_segment_bytes[j])
+                            j += 1
+                    # Handle the last byte if we didn't merge it
+                    if j < len(text_segment_bytes):
+                        merged_segment_bytes.append(text_segment_bytes[j])
+                    # Update the text segment with the merged result
+                    text_segment_subset_bytes[i] = tuple(merged_segment_bytes)
 
         # After we've merged all the bytes, we need to convert the bytes objects to token ids
         token_ids: list[list[int]] = []
@@ -131,14 +135,16 @@ if __name__ == "__main__":
     # Test the tokenizer on a few small examples
 
     test_strings = [
-        "Héllò hôw <|endoftext|><|endoftext|> are ü? 🙃<|endoftext|>",
-        "🙃",
-        "Hello, world!",
-        "   Hello, world! This is a test.",
-        "Hello, world! This is a test. This is a test. This is a test. This is a test.",
-        "Hello, world! <|endoftext|><|endoftext|> this is a simple example<|endoftext|> <|endoftext|> of a sentence",
-        "<|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|>",
-        " <|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|><|endoftext|><|endoftext|>",
+        """<|endoftext|>\n"""
+        # "Héllò hôw <|endoftext|><|endoftext|> are ü? 🙃<|endoftext|>",
+        # "s",
+        # "🙃",
+        # "Hello, world!",
+        # "   Hello, world! This is a test.",
+        # "Hello, world! This is a test. This is a test. This is a test. This is a test.",
+        # "Hello, world! <|endoftext|><|endoftext|> this is a simple example<|endoftext|> <|endoftext|> of a sentence",
+        # "<|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|>",
+        # " <|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|><|endoftext|><|endoftext|>",
     ]
 
     for test_string in test_strings:

@@ -116,8 +116,8 @@ def split_text_on_special_tokens(text: str, special_tokens: list[str]) -> tuple[
     if not special_tokens:
         return [text], [], False
 
-    # Escape special regex characters in special tokens
-    pattern = r"|".join(map(re.escape, special_tokens))
+    # Escape special regex characters in special tokens (in reverse order to match longest tokens first)
+    pattern = r"|".join(map(re.escape, sorted(special_tokens, key=len, reverse=True)))
 
     # Get text segments by splitting on special tokens
     text_segments = re.split(pattern, text)
