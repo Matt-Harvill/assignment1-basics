@@ -111,7 +111,7 @@ class Tokenizer:
         """
 
         ids_to_bytes = [self.vocab[id] for id in ids]
-        bytes_to_text = b"".join(ids_to_bytes).decode("utf-8")
+        bytes_to_text = b"".join(ids_to_bytes).decode("utf-8", errors="replace")
         return bytes_to_text
 
 
@@ -131,6 +131,7 @@ if __name__ == "__main__":
     # Test the tokenizer on a few small examples
 
     test_strings = [
+        "Héllò hôw <|endoftext|><|endoftext|> are ü? 🙃<|endoftext|>",
         "🙃",
         "Hello, world!",
         "   Hello, world! This is a test.",
