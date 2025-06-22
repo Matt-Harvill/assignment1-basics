@@ -164,3 +164,6 @@ cython_debug/
 
 # Data
 data/
+
+# Tokenized datasets
+cs336_basics/artifacts/tokenized_datasets/

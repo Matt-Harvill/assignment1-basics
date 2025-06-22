@@ -1,6 +1,12 @@
 import json
 from pathlib import Path
 import re
+import numpy as np
+import random
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from .tokenizer import Tokenizer
 
 
 def load_vocab_and_merges(vocab_filepath: str | Path, merges_filepath: str | Path) -> tuple[dict[int, str], list[str]]:
@@ -41,6 +47,108 @@ def load_vocab_and_merges(vocab_filepath: str | Path, merges_filepath: str | Pat
         raise ValueError("Merges file is empty")
 
     return vocab, merges
+
+
+def sample_n_docs_from_file(file_path: str | Path, n: int, delimiter_token: str = "<|endoftext|>") -> list[str]:
+    """
+    Sample n documents from a file using the specified delimiter token.
+
+    Args:
+        file_path: Path to the file containing documents
+        n: Number of documents to sample
+        delimiter_token: Token that separates documents
+
+    Returns:
+        List of n sampled documents
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Read the entire file and split by delimiter
+    with open(file_path, encoding="utf-8") as f:
+        content = f.read()
+
+    documents = content.split(delimiter_token)
+    # Remove empty documents
+    documents = [doc.strip() for doc in documents if doc.strip()]
+
+    if len(documents) < n:
+        print(f"Warning: Only {len(documents)} documents available, returning all of them")
+        return documents
+
+    # Sample n documents randomly
+    return random.sample(documents, n)
+
+
+def tokenize_and_serialize_dataset(
+    tokenizer: "Tokenizer",
+    file_path: str | Path,
+    output_path: str | Path,
+    delimiter_token: str = "<|endoftext|>",
+    dtype: type = np.uint16,
+) -> None:
+    """
+    Tokenize a dataset and serialize the token IDs to a NumPy array.
+    This version is optimized to handle large files by streaming.
+    """
+    file_path = Path(file_path)
+    output_path = Path(output_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    # Create output directory if it doesn't exist
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    all_token_ids = []
+    buffer = ""
+    chunk_size = 1024 * 1024  # 1MB chunks
+
+    with open(file_path, encoding="utf-8") as f:
+        while True:
+            chunk = f.read(chunk_size)
+            if not chunk:
+                break
+
+            # Add chunk to buffer and split by delimiter
+            text_to_process = buffer + chunk
+            documents = text_to_process.split(delimiter_token)
+
+            # The last part might be an incomplete document, so we save it for the next chunk
+            buffer = documents.pop()
+
+            for doc in documents:
+                if doc.strip():
+                    all_token_ids.extend(tokenizer.encode(doc))
+
+    # Process any remaining text in the buffer
+    if buffer.strip():
+        all_token_ids.extend(tokenizer.encode(buffer))
+
+    # Convert to NumPy array and save
+    token_array = np.array(all_token_ids, dtype=dtype)
+    np.save(output_path, token_array)
+
+    print(f"Tokenized dataset into {len(token_array)} tokens")
+    print(f"Saved to {output_path}")
+
+
+def load_serialized_dataset(file_path: str | Path) -> np.ndarray:
+    """
+    Load a serialized tokenized dataset.
+
+    Args:
+        file_path: Path to the .npy file
+
+    Returns:
+        NumPy array of token IDs
+    """
+    file_path = Path(file_path)
+    if not file_path.exists():
+        raise FileNotFoundError(f"File not found: {file_path}")
+
+    return np.load(file_path)
 
 
 def get_single_byte_tokens() -> list[str]:
@@ -98,7 +206,10 @@ def convert_merges_to_bytes(merges: list[str] | None) -> list[tuple[bytes, bytes
     for merge in merges:
         parts = merge.split()
         if len(parts) == 2:
-            merges_bytes.append((string_to_byte(parts[0]), string_to_byte(parts[1])))
+            # Strip quotes from the tokens if they exist
+            first_token = parts[0].strip('"')
+            second_token = parts[1].strip('"')
+            merges_bytes.append((string_to_byte(first_token), string_to_byte(second_token)))
 
     return merges_bytes
 

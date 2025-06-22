@@ -1,5 +1,4 @@
 from collections.abc import Iterable, Iterator
-
 from cs336_basics.utils.paths import get_artifacts_path
 from .utils import load_vocab_and_merges, convert_vocab_to_bytes, convert_merges_to_bytes
 from .pretokenizer import pre_tokenize_chunk_ordered
@@ -21,9 +20,16 @@ class Tokenizer:
         Construct a tokenizer from a given vocabulary, list of merges, and (optionally) a list of special tokens.
         """
         self.vocab = vocab
-        self.inverse_vocab = {v: k for k, v in vocab.items()}
         self.merges = merges
         self.special_tokens = special_tokens
+
+        # --- OPTIMIZATION ---
+        # Create a dictionary mapping merge pairs to their rank (priority) for fast lookups.
+        # Lower rank means higher priority.
+        self.ranks = {merge: i for i, merge in enumerate(self.merges)}
+        # --- END OPTIMIZATION ---
+
+        self.inverse_vocab = {v: k for k, v in self.vocab.items()}
 
     @classmethod
     def from_files(cls, vocab_filepath: str | Path, merges_filepath: str | Path, special_tokens=None) -> "Tokenizer":
@@ -40,44 +46,77 @@ class Tokenizer:
         merges = convert_merges_to_bytes(merges_strs)
         return cls(vocab, merges, special_tokens)
 
+    def _get_pairs(self, parts: list[bytes]) -> set[tuple[bytes, bytes]]:
+        """Helper function to get all adjacent pairs from a list of tokens."""
+        return set(zip(parts, parts[1:]))
+
+    def _bpe_merge(self, segment: list[bytes]) -> list[bytes]:
+        """
+        Repeatedly merges the highest-priority pair in a list of byte chunks.
+        This is the core of the optimized BPE algorithm.
+        """
+        parts = list(segment)
+        while True:
+            pairs = self._get_pairs(parts)
+            if not pairs:
+                break
+
+            # Find the highest-priority pair (lowest rank) in the current text
+            inf = float("inf")
+            best_pair = min(pairs, key=lambda pair: self.ranks.get(pair, inf))
+
+            if self.ranks.get(best_pair, inf) == inf:
+                break  # No more merges possible
+
+            # Merge the best pair
+            new_parts = []
+            i = 0
+            while i < len(parts):
+                if i < len(parts) - 1 and (parts[i], parts[i + 1]) == best_pair:
+                    new_parts.append(parts[i] + parts[i + 1])
+                    i += 2
+                else:
+                    new_parts.append(parts[i])
+                    i += 1
+            parts = new_parts
+        return parts
+
     def encode(self, text: str) -> list[int]:
         """
         Encode an input text into a sequence of token IDs.
         """
-
         # First we pre-tokenize the text (saving positional information about the special tokens)
         text_segments_bytes, special_tokens, special_tokens_first = pre_tokenize_chunk_ordered(
             text, [] if self.special_tokens is None else self.special_tokens
         )
 
-        # Then we loop over the merges and apply them to our text segments
-        for merge in self.merges:
-            for text_segment_subset_bytes in text_segments_bytes:
-                for i, text_segment_bytes in enumerate(text_segment_subset_bytes):
-                    merged_segment_bytes: list[bytes] = []
-                    j = 0
-                    while j < len(text_segment_bytes) - 1:
-                        if text_segment_bytes[j] == merge[0] and text_segment_bytes[j + 1] == merge[1]:
-                            # Replace two bytes objects with the concatenated bytes object
-                            merged_segment_bytes.append(text_segment_bytes[j] + text_segment_bytes[j + 1])
-                            j += 2
-                        else:
-                            merged_segment_bytes.append(text_segment_bytes[j])
-                            j += 1
-                    # Handle the last byte if we didn't merge it
-                    if j < len(text_segment_bytes):
-                        merged_segment_bytes.append(text_segment_bytes[j])
-                    # Update the text segment with the merged result
-                    text_segment_subset_bytes[i] = tuple(merged_segment_bytes)
+        # --- OPTIMIZATION ---
+        # Apply BPE merges to each segment using the fast algorithm
+        final_merged_segments = []
+        for segment in text_segments_bytes:
+            # Flatten the nested structure from the pre-tokenizer into a single list of bytes
+            merged_segment = []
+            for word_bytes_tuple in segment:
+                merged_word = self._bpe_merge(list(word_bytes_tuple))
+                merged_segment.extend(merged_word)
+            final_merged_segments.append(merged_segment)
+        # --- END OPTIMIZATION ---
 
         # After we've merged all the bytes, we need to convert the bytes objects to token ids
         token_ids: list[list[int]] = []
-        for text_segment_subset_bytes in text_segments_bytes:
+        for text_segment_subset_bytes in final_merged_segments:
             token_ids_subset: list[int] = []
-            for text_segment_bytes in text_segment_subset_bytes:
-                for bytes_object in text_segment_bytes:
-                    # bytes_object will always be in the vocab
-                    token_ids_subset.append(self.inverse_vocab[bytes_object])
+            # Note: the original code had a bug here. `text_segment_subset_bytes` is the final list of merged tokens.
+            for bytes_object in text_segment_subset_bytes:
+                if bytes_object in self.inverse_vocab:
+                    token_id = self.inverse_vocab[bytes_object]
+                    token_ids_subset.append(token_id)
+                else:
+                    # Fallback for tokens not in vocab: encode as individual bytes.
+                    # This should not happen with a correctly trained BPE tokenizer but adds robustness.
+                    for byte in bytes_object:
+                        token_id = self.inverse_vocab[bytes([byte])]
+                        token_ids_subset.append(token_id)
             token_ids.append(token_ids_subset)
 
         # Convert special tokens to token ids
@@ -85,16 +124,19 @@ class Tokenizer:
 
         # Interleave text segments with special tokens
         all_token_ids: list[int] = []
-        for i in range(min(len(token_ids), len(special_tokens_ids))):
-            if special_tokens_first:
+        if special_tokens_first:
+            # Handle case where text starts with a special token
+            for i in range(len(token_ids)):
                 all_token_ids.append(special_tokens_ids[i])
-            all_token_ids.extend(token_ids[i])
-            if not special_tokens_first:
-                all_token_ids.append(special_tokens_ids[i])
-        if len(token_ids) > len(special_tokens_ids):
-            all_token_ids.extend(token_ids[-1])
-        if len(token_ids) < len(special_tokens_ids):
-            all_token_ids.append(special_tokens_ids[-1])
+                all_token_ids.extend(token_ids[i])
+            if len(special_tokens_ids) > len(token_ids):
+                all_token_ids.append(special_tokens_ids[-1])
+        else:
+            # Handle case where text does not start with a special token
+            for i in range(len(token_ids)):
+                all_token_ids.extend(token_ids[i])
+                if i < len(special_tokens_ids):
+                    all_token_ids.append(special_tokens_ids[i])
 
         return all_token_ids
 
@@ -135,16 +177,15 @@ if __name__ == "__main__":
     # Test the tokenizer on a few small examples
 
     test_strings = [
-        """<|endoftext|>\n"""
-        # "Héllò hôw <|endoftext|><|endoftext|> are ü? 🙃<|endoftext|>",
-        # "s",
-        # "🙃",
-        # "Hello, world!",
-        # "   Hello, world! This is a test.",
-        # "Hello, world! This is a test. This is a test. This is a test. This is a test.",
-        # "Hello, world! <|endoftext|><|endoftext|> this is a simple example<|endoftext|> <|endoftext|> of a sentence",
-        # "<|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|>",
-        # " <|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|><|endoftext|><|endoftext|>",
+        """<|endoftext|>\n""" "Héllò hôw <|endoftext|><|endoftext|> are ü? 🙃<|endoftext|>",
+        "s",
+        "🙃",
+        "Hello, world!",
+        "   Hello, world! This is a test.",
+        "Hello, world! This is a test. This is a test. This is a test. This is a test.",
+        "Hello, world! <|endoftext|><|endoftext|> this is a simple example<|endoftext|> <|endoftext|> of a sentence",
+        "<|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|>",
+        " <|endoftext|>Hello, world! <|endoftext|> this is a simple example <|endoftext|> of a sentence<|endoftext|><|endoftext|><|endoftext|>",
     ]
 
     for test_string in test_strings:
