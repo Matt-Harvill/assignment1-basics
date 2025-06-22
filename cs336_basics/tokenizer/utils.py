@@ -101,33 +101,42 @@ def tokenize_and_serialize_dataset(
     # Create output directory if it doesn't exist
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    all_token_ids = []
-    buffer = ""
-    chunk_size = 1024 * 1024  # 1MB chunks
+    def document_iterator():
+        """A generator that yields documents by streaming from a file, keeping delimiters."""
+        buffer = ""
+        chunk_size = 1024 * 1024  # 1MB chunks
 
-    with open(file_path, encoding="utf-8") as f:
-        while True:
-            chunk = f.read(chunk_size)
-            if not chunk:
-                break
+        with open(file_path, encoding="utf-8") as f:
+            while True:
+                chunk = f.read(chunk_size)
+                if not chunk:
+                    break
 
-            # Add chunk to buffer and split by delimiter
-            text_to_process = buffer + chunk
-            documents = text_to_process.split(delimiter_token)
+                text_to_process = buffer + chunk
+                # Split using regex to keep the delimiter.
+                parts = re.split(f"({re.escape(delimiter_token)})", text_to_process)
 
-            # The last part might be an incomplete document, so we save it for the next chunk
-            buffer = documents.pop()
+                # The last element might be an incomplete document part.
+                buffer = parts.pop()
 
-            for doc in documents:
-                if doc.strip():
-                    all_token_ids.extend(tokenizer.encode(doc))
+                # Process pairs of (document, delimiter)
+                # The length of parts should now be even.
+                for i in range(0, len(parts), 2):
+                    doc_with_delimiter = parts[i] + parts[i + 1]
+                    if doc_with_delimiter.strip():
+                        yield doc_with_delimiter
 
-    # Process any remaining text in the buffer
-    if buffer.strip():
-        all_token_ids.extend(tokenizer.encode(buffer))
+            # After the loop, if there's anything left in the buffer, it's the last document.
+            if buffer.strip():
+                yield buffer
 
-    # Convert to NumPy array and save
-    token_array = np.array(all_token_ids, dtype=dtype)
+    # Create an iterator for documents and then an iterator for tokens
+    doc_iter = document_iterator()
+    token_iter = tokenizer.encode_iterable(doc_iter)
+
+    # Efficiently create the NumPy array from the token iterator
+    token_array = np.fromiter(token_iter, dtype=dtype)
+
     np.save(output_path, token_array)
 
     print(f"Tokenized dataset into {len(token_array)} tokens")
