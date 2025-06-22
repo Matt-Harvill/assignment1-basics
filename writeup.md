@@ -28,4 +28,10 @@
 1. TinyStories tokenizer compression ratio: 2.20 bytes/token
 2. TinyStories compression ratio drops to 2.05 bytes/token on the OpenWeb text samples. This is because it wasn't trained to optimize for the distribution of byte pair merges in OpenWeb text.
 3. It is about 1MB/s which is decent! It would take 233 hours to tokenize the pile at this rate.
-4. So far I've tokenized TinyStories validation set. Now I'm tokenizing TinyStories training text. 16 bits unsigned gives the range 0-65536 which encompasses both tokenizer vocab lengths. It's also half the storage of 32 bits per token.
+4. I tokenized TinyStories valid and train text. 16 bits unsigned gives the range 0-65536 which encompasses both tokenizer vocab lengths. It's also half the storage of 32 bits per token.
+
+## 3 Transformer Language Model Architecture
+
+### Problem (linear): Implementing the linear module (1 point) ✅
+
+### Problem (embedding): Implement the embedding module (1 point)
