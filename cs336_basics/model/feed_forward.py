@@ -5,19 +5,6 @@ from .linear import Linear
 
 
 class FeedForwardSwiGLU(nn.Module):
-    """
-        Deliverable: Implement the SwiGLU feed-forward network, composed of a SiLU activation
-    function and a GLU.
-    Note: in this particular case, you should feel free to use torch.sigmoid in your implementation
-    for numerical stability.
-    You should set dff to approximately 8
-    3 × dmodel in your implementation, while ensuring that
-    the dimensionality of the inner feed-forward layer is a multiple of 64 to make good use of your
-    hardware. To test your implementation against our provided tests, you will need to implement
-    the test adapter at [adapters.run_swiglu]. Then, run uv run pytest -k test_swiglu to
-    test your implementation
-    """
-
     def __init__(
         self,
         d_model: int,
@@ -44,7 +31,7 @@ class FeedForwardSwiGLU(nn.Module):
         self.W3 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
         self.W2 = Linear(self.d_ff, self.d_model, self.device, self.dtype)
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         w1 = self.W1(x)
         swish = w1 * torch.sigmoid(w1)
         up_proj = self.W3(x) * swish

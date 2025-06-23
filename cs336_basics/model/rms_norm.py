@@ -15,7 +15,7 @@ class RMSNorm(nn.Module):
         # Initialize gains to ones
         self.gains = nn.Parameter(torch.ones(self.d_model, device=self.device, dtype=self.dtype))
 
-    def forward(self, x):
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Save in_dtype, but upcast to fp32 so we don't overflow when squaring x
         in_dtype = x.dtype
         x = x.to(torch.float32)

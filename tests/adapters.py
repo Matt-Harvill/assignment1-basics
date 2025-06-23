@@ -11,6 +11,7 @@ from torch import Tensor
 
 from cs336_basics.model.feed_forward import FeedForwardSwiGLU
 from cs336_basics.model.rms_norm import RMSNorm
+from cs336_basics.model.rope import RotaryPositionalEmbedding
 from cs336_basics.tokenizer.tokenizer import Tokenizer
 from cs336_basics.tokenizer.train_tokenizer import train_tokenizer
 from cs336_basics.model.linear import Linear
@@ -216,7 +217,9 @@ def run_rope(
     Returns:
         Float[Tensor, " ... sequence_length d_k"]: Tensor with RoPEd input.
     """
-    raise NotImplementedError
+    rope = RotaryPositionalEmbedding(theta, d_k, max_seq_len)
+
+    return rope(in_query_or_key, token_positions)
 
 
 def run_transformer_block(
