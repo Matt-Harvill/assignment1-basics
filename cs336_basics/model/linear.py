@@ -5,7 +5,9 @@ from einops import einsum
 
 
 class Linear(nn.Module):
-    def __init__(self, in_features, out_features, device=None, dtype=None):
+    def __init__(
+        self, in_features: int, out_features: int, device: torch.device | None = None, dtype: torch.dtype | None = None
+    ):
         super().__init__()  # Do all nn.Module setup
         self.in_features = in_features
         self.out_features = out_features
@@ -13,7 +15,7 @@ class Linear(nn.Module):
         self.dtype = dtype
 
         # Weights
-        self.W = nn.Parameter(torch.Tensor(size=(out_features, in_features), device=self.device))
+        self.W = nn.Parameter(torch.empty(size=(out_features, in_features), device=self.device, dtype=self.dtype))
 
         # Initialize Weights
         var = 2 / (in_features + out_features)

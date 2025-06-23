@@ -18,7 +18,7 @@
 1. It took about 4 minutes to train. The longest token is " accomplishment" with a length of 15, at index ~7000 which makes sense since it would generally make sense for the longest token to be later in the vocabulary.
 2. Pretokenization takes the largest amount of time (communication syncing between all the processes).
 
-### Problem (train_bpe_expts_owt):
+### Problem (train_bpe_expts_owt): BPE Training on OpenWebText (2 points)
 1. Ran out of RAM
 2. Ran out of RAM
 
@@ -34,4 +34,22 @@
 
 ### Problem (linear): Implementing the linear module (1 point) ✅
 
-### Problem (embedding): Implement the embedding module (1 point)
+### Problem (embedding): Implement the embedding module (1 point) ✅
+
+### Problem (rmsnorm): Root Mean Square Layer Normalization (1 point) ✅
+
+### Problem (positionwise_feedforward): Implement the position-wise feed-forward network (2 points) ✅
+
+### Problem (rope): Implement RoPE (2 points)
+
+### Problem (softmax): Implement softmax (1 point)
+
+### Problem (scaled_dot_product_attention): Implement scaled dot-product attention (5 points)
+
+### Problem (multihead_self_attention): Implement causal multi-head self-attention (5 points)
+
+### Problem (transformer_block): Implement the Transformer block (3 points)
+
+### Problem (transformer_lm): Implementing the Transformer LM (3 points)
+
+### Problem (transformer_accounting): Transformer LM resource accounting (5 points)
