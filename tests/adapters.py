@@ -9,6 +9,7 @@ import numpy.typing as npt
 import torch
 from torch import Tensor
 
+from cs336_basics.model.attention import scaled_dot_product_attention
 from cs336_basics.model.feed_forward import FeedForwardSwiGLU
 from cs336_basics.model.rms_norm import RMSNorm
 from cs336_basics.model.rope import RotaryPositionalEmbedding
@@ -122,7 +123,7 @@ def run_scaled_dot_product_attention(
     Returns:
         Float[Tensor, " ... queries d_v"]: Output of SDPA
     """
-    raise NotImplementedError
+    return scaled_dot_product_attention(k=K, q=Q, v=V, attn_mask=mask)
 
 
 def run_multihead_self_attention(
