@@ -43,8 +43,8 @@ class CausalMultiHeadSelfAttention(nn.Module):
         d_model: int,
         num_heads: int,
         rope: RotaryPositionalEmbedding | None = None,
-        device: int | None = None,
-        dtype: int | None = None,
+        device: torch.device | None = None,
+        dtype: torch.dtype | None = None,
     ):
         super().__init__()
         self.d_model = d_model
@@ -65,6 +65,7 @@ class CausalMultiHeadSelfAttention(nn.Module):
         k = self.K(x)
         q = self.Q(x)
         v = self.V(x)
+        seq_len = k.shape[1]
 
         # Split into heads
         k = einops.rearrange(k, "b s (nh dh) -> b nh s dh", nh=self.num_heads, dh=self.d_head)
@@ -72,7 +73,9 @@ class CausalMultiHeadSelfAttention(nn.Module):
         v = einops.rearrange(v, "b s (nh dh) -> b nh s dh", nh=self.num_heads, dh=self.d_head)
 
         # Optionally apply RoPE to k and q
-        if self.rope is not None and token_positions is not None:
+        if self.rope is not None:
+            if token_positions is None:
+                token_positions = torch.arange(0, seq_len)
             k = self.rope.forward(k, token_positions)
             q = self.rope.forward(q, token_positions)
 

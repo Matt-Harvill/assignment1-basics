@@ -14,6 +14,7 @@ from cs336_basics.model.feed_forward import FeedForwardSwiGLU
 from cs336_basics.model.rms_norm import RMSNorm
 from cs336_basics.model.rope import RotaryPositionalEmbedding
 from cs336_basics.model.softmax import softmax
+from cs336_basics.model.transformer import TransformerBlock
 from cs336_basics.tokenizer.tokenizer import Tokenizer
 from cs336_basics.tokenizer.train_tokenizer import train_tokenizer
 from cs336_basics.model.linear import Linear
@@ -302,7 +303,26 @@ def run_transformer_block(
         Float[Tensor, "batch sequence_length d_model"] Tensor with the output of
         running the Transformer block on the input features while using RoPE.
     """
-    raise NotImplementedError
+
+    rope = RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len)
+
+    transformer_block = TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, rope=rope)
+    # Create the mapping from expected keys to actual state dict keys
+    state_dict = {
+        "mha.Q.W": weights["attn.q_proj.weight"],
+        "mha.K.W": weights["attn.k_proj.weight"],
+        "mha.V.W": weights["attn.v_proj.weight"],
+        "mha.O.W": weights["attn.output_proj.weight"],
+        "pre_attn_norm.gains": weights["ln1.weight"],
+        "pre_ffn_norm.gains": weights["ln2.weight"],
+        "ffn.W1.W": weights["ffn.w1.weight"],
+        "ffn.W2.W": weights["ffn.w2.weight"],
+        "ffn.W3.W": weights["ffn.w3.weight"],
+    }
+
+    transformer_block.load_state_dict(state_dict)
+
+    return transformer_block.forward(in_features)
 
 
 def run_transformer_lm(
