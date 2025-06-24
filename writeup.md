@@ -46,7 +46,7 @@
 
 ### Problem (scaled_dot_product_attention): Implement scaled dot-product attention (5 points) ✅
 
-### Problem (multihead_self_attention): Implement causal multi-head self-attention (5 points)
+### Problem (multihead_self_attention): Implement causal multi-head self-attention (5 points) ✅
 
 ### Problem (transformer_block): Implement the Transformer block (3 points)
 
