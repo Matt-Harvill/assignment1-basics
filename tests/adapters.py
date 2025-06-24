@@ -12,6 +12,7 @@ from torch import Tensor
 from cs336_basics.model.feed_forward import FeedForwardSwiGLU
 from cs336_basics.model.rms_norm import RMSNorm
 from cs336_basics.model.rope import RotaryPositionalEmbedding
+from cs336_basics.model.softmax import softmax
 from cs336_basics.tokenizer.tokenizer import Tokenizer
 from cs336_basics.tokenizer.train_tokenizer import train_tokenizer
 from cs336_basics.model.linear import Linear
@@ -454,7 +455,7 @@ def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, "
         Float[Tensor, "..."]: Tensor of with the same shape as `in_features` with the output of
         softmax normalizing the specified `dim`.
     """
-    raise NotImplementedError
+    return softmax(in_features, dim)
 
 
 def run_cross_entropy(

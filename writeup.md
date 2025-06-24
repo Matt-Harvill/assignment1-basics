@@ -40,9 +40,9 @@
 
 ### Problem (positionwise_feedforward): Implement the position-wise feed-forward network (2 points) ✅
 
-### Problem (rope): Implement RoPE (2 points)
+### Problem (rope): Implement RoPE (2 points) ✅
 
-### Problem (softmax): Implement softmax (1 point)
+### Problem (softmax): Implement softmax (1 point) ✅
 
 ### Problem (scaled_dot_product_attention): Implement scaled dot-product attention (5 points)
 
