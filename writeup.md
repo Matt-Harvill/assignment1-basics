@@ -53,8 +53,8 @@
 ### Problem (transformer_lm): Implementing the Transformer LM (3 points) ✅
 
 ### Problem (transformer_accounting): Transformer LM resource accounting (5 points)
-1.
-2.
-3.
-4.
-5.
+1. Number of trainable parameters = 2vd [embed + unembed] + (1 + 48(2))d [norm] + 48(4(d^2)) [attn] + 48(3(4d^2)) [ffn] = 2127057600. Since single precision is fp32 which is 4B/parameter, this equates to 8508230400 Bytes or ~8.5GB.
+2. Matrix multiplications in attention are the projections: 8sd^2 FLOPs, kq scores: 2sd^2 FLOPs, value multiplication: 2s^2d FLOPs, outputs: 2sd^2 so 48(12sd^2 + 2s^2d) for all attention FLOPs. Then we also have ffn which is 2(3(4sd^2)) FLOPs for two up_proj and one down_proj. We have 48x of these too. Finally, the lm_head projection is 2sdv FLOPs. Total FLOPs is 4855591731200 or ~5TFLOPs
+3. FFN take over half of total FLOPS (double attention FLOPS and 20x lm_head FLOPs)
+4. The results are in calculations.py and basically the pattern that emerges with increasing total model size is the ratio of lm_head FLOPs decreases, attn FLOPs ratio decreases, and ffn FLOPs ratio increases. This makes sense since ffn and attn are mostly quadratically related to d_model and linearly with num_layers. And since lm_head is linearly related to d_model but vocab size is constant, it also makes sense why lm_head takes so many of smaller models' FLOPs.
+5. Results are also in calculations.py. Since attention has a component that's quadratic w.r.t. context_length instead of all other components which are linearly related to context_length, we see that attention actually becomes the FLOPs bottleneck in this context_length and the large context regime generally.
