@@ -27,13 +27,13 @@ class FeedForwardSwiGLU(nn.Module):
         else:
             self.d_ff = d_ff
 
-        self.W1 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
-        self.W3 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
-        self.W2 = Linear(self.d_ff, self.d_model, self.device, self.dtype)
+        self.w1 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
+        self.w3 = Linear(self.d_model, self.d_ff, self.device, self.dtype)
+        self.w2 = Linear(self.d_ff, self.d_model, self.device, self.dtype)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        w1 = self.W1(x)
+        w1 = self.w1(x)
         swish = w1 * torch.sigmoid(w1)
-        up_proj = self.W3(x) * swish
+        up_proj = self.w3(x) * swish
 
-        return self.W2(up_proj)
+        return self.w2(up_proj)

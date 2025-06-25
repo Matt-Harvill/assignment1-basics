@@ -13,7 +13,7 @@ class RMSNorm(nn.Module):
         self.dtype = dtype
 
         # Initialize gains to ones
-        self.gains = nn.Parameter(torch.ones(self.d_model, device=self.device, dtype=self.dtype))
+        self.weight = nn.Parameter(torch.ones(self.d_model, device=self.device, dtype=self.dtype))
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         # Save in_dtype, but upcast to fp32 so we don't overflow when squaring x
@@ -23,6 +23,6 @@ class RMSNorm(nn.Module):
         mean_square = torch.mean(x * x, dim=-1, keepdim=True)
         rms = torch.sqrt(mean_square + self.eps)
 
-        result = self.gains * x / rms
+        result = self.weight * x / rms
 
         return result.to(in_dtype)

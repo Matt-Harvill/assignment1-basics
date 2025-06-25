@@ -14,7 +14,7 @@ from cs336_basics.model.feed_forward import FeedForwardSwiGLU
 from cs336_basics.model.rms_norm import RMSNorm
 from cs336_basics.model.rope import RotaryPositionalEmbedding
 from cs336_basics.model.softmax import softmax
-from cs336_basics.model.transformer import TransformerBlock
+from cs336_basics.model.transformer import Transformer, TransformerBlock
 from cs336_basics.tokenizer.tokenizer import Tokenizer
 from cs336_basics.tokenizer.train_tokenizer import train_tokenizer
 from cs336_basics.model.linear import Linear
@@ -41,7 +41,7 @@ def run_linear(
     """
 
     linear = Linear(d_in, d_out)
-    linear.load_state_dict({"W": weights})
+    linear.load_state_dict({"weight": weights})
 
     return linear(in_features)
 
@@ -66,7 +66,7 @@ def run_embedding(
     """
 
     embedding = Embedding(vocab_size, d_model)
-    embedding.load_state_dict({"embed_matrix": weights})
+    embedding.load_state_dict({"weight": weights})
 
     return embedding(token_ids)
 
@@ -101,7 +101,7 @@ def run_swiglu(
     # swiglu.w2.weight.data = w2_weight
     # swiglu.w3.weight.data = w3_weight
     swiglu = FeedForwardSwiGLU(d_model, d_ff)
-    swiglu.load_state_dict({"W1.W": w1_weight, "W2.W": w2_weight, "W3.W": w3_weight})
+    swiglu.load_state_dict({"w1.weight": w1_weight, "w2.weight": w2_weight, "w3.weight": w3_weight})
 
     return swiglu(in_features)
 
@@ -159,7 +159,14 @@ def run_multihead_self_attention(
         implementation with the given QKV projection weights and input features.
     """
     cmha = CausalMultiHeadSelfAttention(d_model, num_heads)
-    cmha.load_state_dict({"K.W": k_proj_weight, "Q.W": q_proj_weight, "V.W": v_proj_weight, "O.W": o_proj_weight})
+    cmha.load_state_dict(
+        {
+            "k_proj.weight": k_proj_weight,
+            "q_proj.weight": q_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
 
     return cmha.forward(in_features)
 
@@ -204,7 +211,14 @@ def run_multihead_self_attention_with_rope(
     rope = RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len)
 
     cmha = CausalMultiHeadSelfAttention(d_model, num_heads, rope)
-    cmha.load_state_dict({"K.W": k_proj_weight, "Q.W": q_proj_weight, "V.W": v_proj_weight, "O.W": o_proj_weight})
+    cmha.load_state_dict(
+        {
+            "k_proj.weight": k_proj_weight,
+            "q_proj.weight": q_proj_weight,
+            "v_proj.weight": v_proj_weight,
+            "output_proj.weight": o_proj_weight,
+        }
+    )
 
     return cmha.forward(in_features, token_positions)
 
@@ -307,20 +321,9 @@ def run_transformer_block(
     rope = RotaryPositionalEmbedding(theta, d_model // num_heads, max_seq_len)
 
     transformer_block = TransformerBlock(d_model=d_model, num_heads=num_heads, d_ff=d_ff, rope=rope)
-    # Create the mapping from expected keys to actual state dict keys
-    state_dict = {
-        "mha.Q.W": weights["attn.q_proj.weight"],
-        "mha.K.W": weights["attn.k_proj.weight"],
-        "mha.V.W": weights["attn.v_proj.weight"],
-        "mha.O.W": weights["attn.output_proj.weight"],
-        "pre_attn_norm.gains": weights["ln1.weight"],
-        "pre_ffn_norm.gains": weights["ln2.weight"],
-        "ffn.W1.W": weights["ffn.w1.weight"],
-        "ffn.W2.W": weights["ffn.w2.weight"],
-        "ffn.W3.W": weights["ffn.w3.weight"],
-    }
 
-    transformer_block.load_state_dict(state_dict)
+    # The state dict keys now align with the expected keys, so we can load directly
+    transformer_block.load_state_dict(weights)
 
     return transformer_block.forward(in_features)
 
@@ -404,7 +407,19 @@ def run_transformer_lm(
         Float[Tensor, "batch_size sequence_length vocab_size"]: Tensor with the predicted unnormalized
         next-word distribution for each token.
     """
-    raise NotImplementedError
+    transformer_lm = Transformer(
+        d_model=d_model,
+        num_heads=num_heads,
+        d_ff=d_ff,
+        vocab_size=vocab_size,
+        context_length=context_length,
+        rope_theta=rope_theta,
+        num_layers=num_layers,
+    )
+
+    transformer_lm.load_state_dict(weights)
+
+    return transformer_lm.forward(in_indices)
 
 
 def run_rmsnorm(

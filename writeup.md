@@ -48,8 +48,13 @@
 
 ### Problem (multihead_self_attention): Implement causal multi-head self-attention (5 points) ✅
 
-### Problem (transformer_block): Implement the Transformer block (3 points)
+### Problem (transformer_block): Implement the Transformer block (3 points) ✅
 
-### Problem (transformer_lm): Implementing the Transformer LM (3 points)
+### Problem (transformer_lm): Implementing the Transformer LM (3 points) ✅
 
 ### Problem (transformer_accounting): Transformer LM resource accounting (5 points)
+1.
+2.
+3.
+4.
+5.

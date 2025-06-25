@@ -55,16 +55,16 @@ class CausalMultiHeadSelfAttention(nn.Module):
 
         self.rope = rope
 
-        self.K = Linear(self.d_model, self.d_model)
-        self.Q = Linear(self.d_model, self.d_model)
-        self.V = Linear(self.d_model, self.d_model)
-        self.O = Linear(self.d_model, self.d_model)
+        self.q_proj = Linear(self.d_model, self.d_model)
+        self.k_proj = Linear(self.d_model, self.d_model)
+        self.v_proj = Linear(self.d_model, self.d_model)
+        self.output_proj = Linear(self.d_model, self.d_model)
 
     def forward(self, x: torch.Tensor, token_positions: torch.Tensor | None = None) -> torch.Tensor:
         # First do the scaled_dot_product_attention
-        k = self.K(x)
-        q = self.Q(x)
-        v = self.V(x)
+        k = self.k_proj(x)
+        q = self.q_proj(x)
+        v = self.v_proj(x)
         seq_len = k.shape[1]
 
         # Split into heads
@@ -86,4 +86,4 @@ class CausalMultiHeadSelfAttention(nn.Module):
         attn_out = einops.rearrange(attn_out, "b nh s dh -> b s (nh dh)", nh=self.num_heads, dh=self.d_head)
 
         # Apply output projection
-        return self.O(attn_out)
+        return self.output_proj(attn_out)
