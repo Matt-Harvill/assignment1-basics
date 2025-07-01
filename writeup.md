@@ -58,3 +58,5 @@
 3. FFN take over half of total FLOPS (double attention FLOPS and 20x lm_head FLOPs)
 4. The results are in calculations.py and basically the pattern that emerges with increasing total model size is the ratio of lm_head FLOPs decreases, attn FLOPs ratio decreases, and ffn FLOPs ratio increases. This makes sense since ffn and attn are mostly quadratically related to d_model and linearly with num_layers. And since lm_head is linearly related to d_model but vocab size is constant, it also makes sense why lm_head takes so many of smaller models' FLOPs.
 5. Results are also in calculations.py. Since attention has a component that's quadratic w.r.t. context_length instead of all other components which are linearly related to context_length, we see that attention actually becomes the FLOPs bottleneck in this context_length and the large context regime generally.
+
+### Problem (cross_entropy): Implement Cross entropy ✅
