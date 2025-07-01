@@ -60,3 +60,6 @@
 5. Results are also in calculations.py. Since attention has a component that's quadratic w.r.t. context_length instead of all other components which are linearly related to context_length, we see that attention actually becomes the FLOPs bottleneck in this context_length and the large context regime generally.
 
 ### Problem (cross_entropy): Implement Cross entropy ✅
+
+### Problem (learning_rate_tuning): Tuning the learning rate (1 point)
+1. The loss decays faster and faster with higher learning rates, with lr=1e2 to be the best (convergent) lr. At lr=1e3, the loss is still low, but appears to be diverging.
