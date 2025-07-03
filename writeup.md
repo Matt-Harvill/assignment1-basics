@@ -123,10 +123,9 @@ M_bytes = 4 * (
 
 4. Total FLOPS per sample is 4855591731200 so if we take 2x that in backward and add constant 34G from AdamW, with a batch size of 1024, a single step should take 14.9 petaFLOPs. Assuming 50% MFU with 19.5 teraFLOP/s as peak, this means we effectively achieve 9.75 teraFLOP/s making one step take 1568 seconds. Thus it would take ~7.2k days = 20 years on a single A100.
 
-### Problem (learning_rate_schedule): Implement cosine learning rate schedule with
-warmup
+### Problem (learning_rate_schedule): Implement cosine learning rate schedule with warmup ✅
 
-### Problem (gradient_clipping): Implement gradient clipping (1 point)
+### Problem (gradient_clipping): Implement gradient clipping (1 point) ✅
 
 ## 5 Training Loop
 
