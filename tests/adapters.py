@@ -19,6 +19,7 @@ from cs336_basics.tokenizer.tokenizer import Tokenizer
 from cs336_basics.tokenizer.train_tokenizer import train_tokenizer
 from cs336_basics.model.linear import Linear
 from cs336_basics.model.embedding import Embedding
+from cs336_basics.training.adamw import AdamW
 from cs336_basics.training.cross_entropy import cross_entropy
 
 
@@ -538,7 +539,7 @@ def get_adamw_cls() -> type[torch.optim.Optimizer]:
     """
     Returns a torch.optim.Optimizer that implements AdamW.
     """
-    raise NotImplementedError
+    return AdamW
 
 
 def run_get_lr_cosine_schedule(

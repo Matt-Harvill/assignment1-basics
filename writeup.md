@@ -59,7 +59,50 @@
 4. The results are in calculations.py and basically the pattern that emerges with increasing total model size is the ratio of lm_head FLOPs decreases, attn FLOPs ratio decreases, and ffn FLOPs ratio increases. This makes sense since ffn and attn are mostly quadratically related to d_model and linearly with num_layers. And since lm_head is linearly related to d_model but vocab size is constant, it also makes sense why lm_head takes so many of smaller models' FLOPs.
 5. Results are also in calculations.py. Since attention has a component that's quadratic w.r.t. context_length instead of all other components which are linearly related to context_length, we see that attention actually becomes the FLOPs bottleneck in this context_length and the large context regime generally.
 
+## 4 Training a Transformer LM
+
 ### Problem (cross_entropy): Implement Cross entropy ✅
 
 ### Problem (learning_rate_tuning): Tuning the learning rate (1 point)
 1. The loss decays faster and faster with higher learning rates, with lr=1e2 to be the best (convergent) lr. At lr=1e3, the loss is still low, but appears to be diverging.
+
+### Problem (adamw): Implement AdamW (2 points) ✅
+
+### Problem (adamwAccounting): Resource accounting for training with AdamW (2 points)
+
+### Problem (learning_rate_schedule): Implement cosine learning rate schedule with
+warmup
+
+### Problem (gradient_clipping): Implement gradient clipping (1 point)
+
+## 5 Training Loop
+
+### Problem (data_loading): Implement data loading (2 points)
+
+### Problem (checkpointing): Implement model checkpointing (1 point)
+
+### Problem (training_together): Put it together (4 points)
+
+## 6 Generating text
+
+### Problem (decoding): Decoding (3 points)
+
+## 7 Experiments
+
+### Problem (experiment_log): Experiment logging (3 points)
+
+### Problem (learning_rate): Tune the learning rate (3 points) (4 H100 hrs)
+
+### Problem (batch_size_experiment): Batch size variations (1 point) (2 H100 hrs)
+
+### Problem (generate): Generate text (1 point)
+
+### Problem (layer_norm_ablation): Remove RMSNorm and train (1 point) (1 H100 hr)
+
+### Problem (pre_norm_ablation): Implement post-norm and train (1 point) (1 H100 hr)
+
+### Problem (no_pos_emb): Implement NoPE (1 point) (1 H100 hr)
+
+### Problem (swiglu_ablation): SwiGLU vs. SiLU (1 point) (1 H100 hr)
+
+### Problem (main_experiment): Experiment on OWT (2 points) (3 H100 hrs)
