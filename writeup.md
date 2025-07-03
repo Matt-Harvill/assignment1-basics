@@ -69,6 +69,59 @@
 ### Problem (adamw): Implement AdamW (2 points) ✅
 
 ### Problem (adamwAccounting): Resource accounting for training with AdamW (2 points)
+1. Peak memory
+Parameters
+- Transformer Block (* num_layers)
+    - RMSNorms (2 * d_model)
+    - Q,K,V,O (4 * d_model^2)
+    - W1,W2,W3 (12 * d_model^2)
+- Final RMSNorm (d_model)
+- Output embedding (d_model * vocab_size)
+- Cross-entropy on logits (0)
+
+Activations
+- Transformer Block (* num_layers)
+    - RMSNorms (2 * batch_size * context_length * d_model)
+    - Attention
+        - QKV projections (3 * batch_size * context_length * d_model)
+        - Q^TK (batch_size * num_heads * context_length * context_length)
+        - softmax (batch_size * num_heads * context_length * context_length)
+        - weighted sum of values (batch_size * context_length * d_model)
+        - output proj (batch_size * context_length * d_model)
+    - W1 (batch_size * context_length * 4 * d_model)
+    - SiLU (batch_size * context_length * 4 * d_model)
+    - W2 (batch_size * context_length * d_model)
+- Final RMSNorm (batch_size * context_length * d_model)
+- Output embedding (batch_size * context_length * vocab_size)
+- Cross-entropy on logits (0 extra)
+
+Gradients
+- 1 for each parameter
+- 1 for each activation (for backprop as we go, so not all at once)
+
+Optimizer State
+- 1 for each parameter for "m" - first moments exponential average
+- 1 for each parameter for "v" - second moments exponential average
+
+Total Memory
+- 4 * Parameters (weights, grads, m, v)
+- ~1 * Activations (assuming no activation checkpointing and we need current activation grads for backprop)
+- All of this multiplied by 4 bytes since fp32 has 4 bytes per scalar
+
+In terms of all Variables:
+M_bytes = 4 * (
+    4 * (num_layers * (2 * d_model + 16 * d_model**2) + d_model * (1 + vocab_size)) +
+    (16 * batch_size * num_layers * context_length * d_model) +
+    (2 * batch_size * num_layers * context_length**2 * num_heads) +
+    (batch_size * context_length * d_model) +
+    (batch_size * context_length * vocab_size)
+)
+
+2. 15.311900672 * batch_size + 32.7463424 GB (from calculations.py). This means we can use batch_size = 3 to train on 80GB. This is highly cautious as we would probably not save all intermediate activations (including attention which is massive)
+
+3. Since there are ~16 FLOPs per parameter for an AdamW step, this totals to 2127057600 * 16 = 34032921600 ~ 34GFLOPs.
+
+4. Total FLOPS per sample is 4855591731200 so if we take 2x that in backward and add constant 34G from AdamW, with a batch size of 1024, a single step should take 14.9 petaFLOPs. Assuming 50% MFU with 19.5 teraFLOP/s as peak, this means we effectively achieve 9.75 teraFLOP/s making one step take 1568 seconds. Thus it would take ~7.2k days = 20 years on a single A100.
 
 ### Problem (learning_rate_schedule): Implement cosine learning rate schedule with
 warmup

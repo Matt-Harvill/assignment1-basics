@@ -1,4 +1,4 @@
-gpt2xl_params: dict[str, int | str] = {"name": "gpt2xl", "d": 1600, "l": 48}
+gpt2xl_params: dict[str, int | str] = {"name": "gpt2xl", "d": 1600, "l": 48, "h": 25}
 
 gpt2l_params: dict[str, int | str] = {"name": "gpt2l", "d": 1280, "l": 36}
 
@@ -8,11 +8,13 @@ gpt2s_params: dict[str, int | str] = {"name": "gpt2s", "d": 768, "l": 12}
 
 v: int = 50257  # vocab size same for all models
 s: int = 1024  # context length same for all models
+batch_size: int = 1  # same batch_size for all models
 
-for model in [gpt2xl_params, gpt2l_params, gpt2m_params, gpt2s_params]:
+for model in [gpt2s_params, gpt2m_params, gpt2l_params, gpt2xl_params]:
     d: int = model["d"]  # type: ignore
     num_layers: int = model["l"]  # type: ignore
     name: str = model["name"]  # type: ignore
+    num_heads: int = int(1 if "h" not in model else model["h"])
 
     num_params: int = 2 * v * d + (1 + 2 * num_layers) * d + 192 * d * d + 576 * d * d
 
@@ -46,6 +48,22 @@ for model in [gpt2xl_params, gpt2l_params, gpt2m_params, gpt2s_params]:
         print(f" Long Sequence FFN FLOPs: {temp_ffn_flops}")
         print(f" Long Sequence LM Head FLOPs: {temp_lm_head_flops}")
         print(f" Long Sequence Total FLOPs: {temp_total_flops}")
+
+    M_bytes = 4 * (
+        4 * (num_layers * (2 * d + 16 * d**2) + d * (1 + v))
+        + (16 * batch_size * num_layers * s * d)
+        + (2 * batch_size * num_layers * s**2 * num_heads)
+        + (batch_size * s * d)
+        + (batch_size * s * v)
+    )
+
+    a = 4 * (d * s * (16 * num_layers + 1) + 2 * num_layers * s**2 * num_heads + s * v)
+
+    b = 16 * (2 * num_layers * d + 16 * num_layers * d**2 + d + d * v)
+
+    print(f"Peak memory: {M_bytes / 1e9} GB")
+    print(f"Peak memory in a * batch_size + b format: {a / 1e9} * batch_size + {b / 1e9} GB")
+    assert a * batch_size + b == M_bytes
 
     print(f"Model: {name}")
     print("-" * 40)
