@@ -21,6 +21,7 @@ from cs336_basics.model.linear import Linear
 from cs336_basics.model.embedding import Embedding
 from cs336_basics.training.adamw import AdamW
 from cs336_basics.training.cross_entropy import cross_entropy
+from cs336_basics.training.data_loader import load_data
 from cs336_basics.training.gradient_clipping import clip_gradients
 from cs336_basics.training.learning_rate_scheduling import get_lr_cosine_schedule
 
@@ -487,7 +488,7 @@ def run_get_batch(
         is the sampled input sequences, and the second tuple item is the corresponding
         language modeling labels.
     """
-    raise NotImplementedError
+    return load_data(dataset, batch_size=batch_size, context_length=context_length, device=device)
 
 
 def run_softmax(in_features: Float[Tensor, " ..."], dim: int) -> Float[Tensor, " ..."]:

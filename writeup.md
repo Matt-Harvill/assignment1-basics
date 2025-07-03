@@ -129,7 +129,7 @@ M_bytes = 4 * (
 
 ## 5 Training Loop
 
-### Problem (data_loading): Implement data loading (2 points)
+### Problem (data_loading): Implement data loading (2 points) ✅
 
 ### Problem (checkpointing): Implement model checkpointing (1 point)
 
