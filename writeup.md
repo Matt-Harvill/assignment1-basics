@@ -131,7 +131,7 @@ M_bytes = 4 * (
 
 ### Problem (data_loading): Implement data loading (2 points) ✅
 
-### Problem (checkpointing): Implement model checkpointing (1 point)
+### Problem (checkpointing): Implement model checkpointing (1 point) ✅
 
 ### Problem (training_together): Put it together (4 points)
 
